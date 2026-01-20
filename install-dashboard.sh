@@ -214,11 +214,20 @@ echo "Copying dashboard files..."
 cp -r $SOURCE_DIR/* $DASHBOARD_DIR/
 
 # Ensure frontend UI is copied correctly (force copy if exists in source)
-if [ -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" ]; then
+# Note: SOURCE_DIR is already "dashboard" or "temp-repo/dashboard", so path is frontend/dist/index.html
+if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
     echo "Ensuring frontend UI is copied..."
     mkdir -p $DASHBOARD_DIR/frontend/dist
-    cp -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
-    echo "✓ Frontend UI copied from repository"
+    cp -f "$SOURCE_DIR/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+    
+    # Verify file size (should be ~39KB for full UI)
+    FILE_SIZE=$(stat -f%z "$DASHBOARD_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$DASHBOARD_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
+    if [ "$FILE_SIZE" -gt 10000 ]; then
+        echo "✓ Frontend UI copied from repository (full UI, size: $FILE_SIZE bytes)"
+    else
+        echo "⚠ Frontend file seems to be placeholder (size: $FILE_SIZE bytes)"
+        echo "  Please ensure dashboard/frontend/dist/index.html (full UI ~39KB) exists in GitHub repository"
+    fi
 fi
 
 # Ensure API endpoint exists and is correct
@@ -1204,13 +1213,14 @@ if [ -f "$DASHBOARD_DIR/frontend/dist/index.html" ]; then
         echo "  Attempting to copy full UI from source..."
         
         # Try to copy from source directory (if still available)
-        if [ -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" ]; then
-            SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/dashboard/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/dashboard/frontend/dist/index.html" 2>/dev/null || echo "0")
+        # Note: SOURCE_DIR is already "dashboard" or "temp-repo/dashboard"
+        if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
+            SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
             if [ "$SOURCE_SIZE" -gt 10000 ]; then
-                cp -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+                cp -f "$SOURCE_DIR/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
                 echo "✓ Full UI copied from source (size: $SOURCE_SIZE bytes)"
             else
-                echo "  Source file also seems to be placeholder"
+                echo "  Source file also seems to be placeholder (size: $SOURCE_SIZE bytes)"
             fi
         else
             echo "  Source directory no longer available"
@@ -1223,12 +1233,14 @@ if [ -f "$DASHBOARD_DIR/frontend/dist/index.html" ]; then
 else
     echo "⚠ Frontend index.html not found"
     echo "  Attempting to copy from source..."
-    if [ -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" ]; then
+    # Note: SOURCE_DIR is already "dashboard" or "temp-repo/dashboard"
+    if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
         mkdir -p $DASHBOARD_DIR/frontend/dist
-        cp -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+        cp -f "$SOURCE_DIR/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
         echo "✓ Frontend UI copied from source"
     else
         echo "  Expected location: $DASHBOARD_DIR/frontend/dist/index.html"
+        echo "  Source path checked: $SOURCE_DIR/frontend/dist/index.html"
         echo "  Please ensure dashboard/frontend/dist/index.html exists in your GitHub repository"
     fi
 fi
