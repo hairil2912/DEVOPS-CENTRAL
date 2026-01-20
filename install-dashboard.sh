@@ -11,7 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
-VERSION="1.0.3"
+VERSION="1.0.4"
 
 echo -e "${GREEN}Installing DevOps Dashboard v${VERSION}...${NC}"
 
@@ -149,7 +149,7 @@ mkdir -p $DASHBOARD_DIR/{backend,frontend,database,nginx,scripts}
 mkdir -p $DASHBOARD_DIR/backend/storage/{logs,cache,backups}
 
 # Detect if running from curl or local
-TEMP_DIR=""
+TEMP_REPO_DIR="/tmp/DEVOPS-CENTRAL"
 SOURCE_DIR=""
 
 # Check if dashboard directory exists locally
@@ -176,26 +176,25 @@ else
         fi
     fi
     
-    TEMP_DIR=$(mktemp -d)
-    cd $TEMP_DIR
+    # Remove old clone if exists (to ensure fresh clone)
+    rm -rf $TEMP_REPO_DIR 2>/dev/null || true
     
     # Clone repository (shallow clone, only master branch, always fresh)
     echo "Downloading dashboard files from GitHub (this may take 1-2 minutes)..."
     echo "Please wait..."
-    # Remove any existing temp-repo to ensure fresh clone
-    rm -rf temp-repo 2>/dev/null || true
+    echo "  Cloning to: $TEMP_REPO_DIR"
     
-    if git clone --depth 1 --branch $BRANCH --single-branch --quiet --progress $REPO_URL.git temp-repo 2>&1; then
+    if git clone --depth 1 --branch $BRANCH --single-branch --quiet --progress $REPO_URL.git $TEMP_REPO_DIR 2>&1; then
         echo "✓ Files downloaded successfully"
     else
         echo -e "${YELLOW}Retrying download...${NC}"
-        rm -rf temp-repo 2>/dev/null || true
-        git clone --depth 1 --branch $BRANCH --single-branch --quiet $REPO_URL.git temp-repo
+        rm -rf $TEMP_REPO_DIR 2>/dev/null || true
+        git clone --depth 1 --branch $BRANCH --single-branch --quiet $REPO_URL.git $TEMP_REPO_DIR
     fi
     
-    if [ -d "temp-repo" ]; then
-        if [ -d "temp-repo/dashboard" ]; then
-            SOURCE_DIR="temp-repo/dashboard"
+    if [ -d "$TEMP_REPO_DIR" ]; then
+        if [ -d "$TEMP_REPO_DIR/dashboard" ]; then
+            SOURCE_DIR="$TEMP_REPO_DIR/dashboard"
             # Debug: Check if frontend file exists
             if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
                 SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
@@ -203,13 +202,13 @@ else
             else
                 echo "  ⚠ Frontend file not found at: $SOURCE_DIR/frontend/dist/index.html"
                 echo "  Checking repository structure..."
-                find temp-repo -name "index.html" -type f 2>/dev/null | head -5 || echo "  No index.html files found in repository"
+                find $TEMP_REPO_DIR -name "index.html" -type f 2>/dev/null | head -5 || echo "  No index.html files found in repository"
             fi
         else
             echo -e "${RED}Error: Dashboard directory not found in repository${NC}"
             echo "  Repository contents:"
-            ls -la temp-repo/ 2>/dev/null | head -10 || echo "  Cannot list repository contents"
-            rm -rf $TEMP_DIR
+            ls -la $TEMP_REPO_DIR/ 2>/dev/null | head -10 || echo "  Cannot list repository contents"
+            rm -rf $TEMP_REPO_DIR
             exit 1
         fi
     else
@@ -219,7 +218,7 @@ else
         echo "2. Branch name is correct: $BRANCH"
         echo "3. Internet connection is working"
         echo "4. Git is properly installed"
-        rm -rf $TEMP_DIR
+        rm -rf $TEMP_REPO_DIR
         exit 1
     fi
 fi
@@ -284,8 +283,8 @@ else
     
     # Check if file exists elsewhere
     echo "  Searching for index.html in repository..."
-    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR/temp-repo" ]; then
-        find "$TEMP_DIR/temp-repo" -name "index.html" -type f 2>/dev/null | head -5 || echo "    No index.html files found"
+    if [ -n "$TEMP_REPO_DIR" ] && [ -d "$TEMP_REPO_DIR" ]; then
+        find "$TEMP_REPO_DIR" -name "index.html" -type f 2>/dev/null | head -5 || echo "    No index.html files found"
     fi
     
     echo "  Please ensure dashboard/frontend/dist/index.html exists in GitHub repository"
@@ -309,8 +308,8 @@ else
     # Will be created from source
 fi
 
-# Cleanup temp dir will be done at the end, after all files are copied and verified
-# (Keep TEMP_DIR for now, will cleanup at the very end)
+# Cleanup temp repo will be done at the end, after all files are copied and verified
+# (Keep TEMP_REPO_DIR for now, will cleanup at the very end)
 
 # Ensure API endpoint is correct (AUTO - always create correct version)
 echo "Ensuring API endpoint is correct..."
@@ -1382,12 +1381,11 @@ if command -v curl &> /dev/null; then
     fi
 fi
 
-# Cleanup temp dir at the very end (after all files copied and verified)
-if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-    echo "Cleaning up temporary files..."
-    cd /
-    rm -rf $TEMP_DIR
-    echo "✓ Cleanup complete"
+# Cleanup temp repo at the very end (after all files copied and verified)
+if [ -n "$TEMP_REPO_DIR" ] && [ -d "$TEMP_REPO_DIR" ]; then
+    echo "Cleaning up temporary repository..."
+    rm -rf $TEMP_REPO_DIR
+    echo "✓ Cleanup complete (removed: $TEMP_REPO_DIR)"
 fi
 
 echo ""
