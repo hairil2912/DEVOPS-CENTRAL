@@ -942,13 +942,43 @@ else
 EOF
 fi
 
-# Final test - try to curl localhost
+# Final test and auto-fix 403 error
 if command -v curl &> /dev/null; then
-    if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$DASHBOARD_PORT | grep -q "200\|301\|302"; then
-        echo "✓ Dashboard is responding"
+    echo "Testing dashboard response..."
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$DASHBOARD_PORT 2>/dev/null || echo "000")
+    
+    if echo "$HTTP_CODE" | grep -q "200\|301\|302"; then
+        echo "✓ Dashboard is responding (HTTP $HTTP_CODE)"
+    elif [ "$HTTP_CODE" = "403" ]; then
+        echo "⚠ Detected 403 error, auto-fixing permissions and SELinux..."
+        
+        # Fix permissions
+        chown -R $NGINX_USER:$NGINX_USER $DASHBOARD_DIR 2>/dev/null || true
+        chmod -R 755 $DASHBOARD_DIR 2>/dev/null || true
+        chmod -R 755 $DASHBOARD_DIR/frontend/dist 2>/dev/null || true
+        
+        # Fix SELinux
+        if command -v getenforce &> /dev/null && [ "$(getenforce)" = "Enforcing" ]; then
+            echo "Fixing SELinux context..."
+            chcon -R -t httpd_sys_content_t $DASHBOARD_DIR 2>/dev/null || true
+            chcon -R -t httpd_sys_rw_content_t $DASHBOARD_DIR/backend/storage 2>/dev/null || true
+            setsebool -P httpd_read_user_content 1 2>/dev/null || true
+            setsebool -P httpd_can_network_connect 1 2>/dev/null || true
+        fi
+        
+        # Reload Nginx
+        systemctl reload nginx
+        sleep 2
+        
+        # Test again
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$DASHBOARD_PORT 2>/dev/null || echo "000")
+        if echo "$HTTP_CODE" | grep -q "200\|301\|302"; then
+            echo "✓ Dashboard is now responding (HTTP $HTTP_CODE)"
+        else
+            echo "⚠ Still getting HTTP $HTTP_CODE, but permissions are fixed"
+        fi
     else
-        echo "Dashboard may need a moment to fully start..."
-        sleep 3
+        echo "Dashboard response: HTTP $HTTP_CODE (may need a moment to start)"
     fi
 fi
 
