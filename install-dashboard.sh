@@ -3,6 +3,8 @@
 # Usage: curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh | bash
 
 set -e
+# Allow some commands to fail without stopping script
+set +e  # Temporarily disable exit on error for MariaDB install
 
 # Colors
 GREEN='\033[0;32m'
@@ -103,8 +105,10 @@ fi
 
 # Check MariaDB/MySQL
 if ! command -v mysql &> /dev/null && ! command -v mariadb &> /dev/null; then
-    echo "MariaDB/MySQL not found. Installing MariaDB..."
+    echo "MariaDB/MySQL not found. Installing MariaDB 10.5.2..."
     if command -v dnf &> /dev/null; then
+        # Install MariaDB 10.5.2 from official repository
+        echo "Setting up MariaDB 10.5.2 repository..."
         cat > /etc/yum.repos.d/MariaDB.repo <<'EOF'
 [mariadb]
 name = MariaDB
@@ -112,7 +116,21 @@ baseurl = https://archive.mariadb.org/mariadb-10.5.2/yum/centos8-amd64
 gpgkey=https://archive.mariadb.org/PublicKey
 gpgcheck=1
 EOF
-        dnf install -y MariaDB-server MariaDB-client
+        # Try install with uppercase (official repo)
+        echo "Installing MariaDB 10.5.2..."
+        if dnf install -y MariaDB-server MariaDB-client 2>/dev/null; then
+            echo "MariaDB 10.5.2 installed from official repository"
+        else
+            # Fallback to default repo if official repo fails
+            echo -e "${YELLOW}Official MariaDB repo failed. Trying default repository...${NC}"
+            rm -f /etc/yum.repos.d/MariaDB.repo
+            if dnf install -y mariadb-server mariadb; then
+                echo "MariaDB installed from default repository (version may differ)"
+            else
+                echo -e "${YELLOW}Warning: MariaDB installation failed. Continuing anyway...${NC}"
+                echo "You can install MariaDB manually later"
+            fi
+        fi
         systemctl enable mariadb
         systemctl start mariadb
     elif command -v apt-get &> /dev/null; then
@@ -122,7 +140,7 @@ EOF
         systemctl start mariadb
     fi
 else
-    echo "MariaDB/MySQL already installed"
+    echo "MariaDB/MySQL already installed: $(mysql --version 2>/dev/null || mariadb --version 2>/dev/null)"
 fi
 
 # Create directories
