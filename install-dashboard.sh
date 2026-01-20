@@ -196,8 +196,19 @@ else
     if [ -d "temp-repo" ]; then
         if [ -d "temp-repo/dashboard" ]; then
             SOURCE_DIR="temp-repo/dashboard"
+            # Debug: Check if frontend file exists
+            if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
+                SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
+                echo "  Found frontend file in repository (size: $SOURCE_SIZE bytes)"
+            else
+                echo "  ⚠ Frontend file not found at: $SOURCE_DIR/frontend/dist/index.html"
+                echo "  Checking repository structure..."
+                find temp-repo -name "index.html" -type f 2>/dev/null | head -5 || echo "  No index.html files found in repository"
+            fi
         else
             echo -e "${RED}Error: Dashboard directory not found in repository${NC}"
+            echo "  Repository contents:"
+            ls -la temp-repo/ 2>/dev/null | head -10 || echo "  Cannot list repository contents"
             rm -rf $TEMP_DIR
             exit 1
         fi
@@ -247,7 +258,28 @@ if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
     fi
 else
     echo "⚠ Frontend index.html not found in source: $SOURCE_DIR/frontend/dist/index.html"
+    echo "  Checking what files exist in repository..."
+    
+    # Debug: List frontend directory structure
+    if [ -d "$SOURCE_DIR/frontend" ]; then
+        echo "  Frontend directory exists, contents:"
+        find "$SOURCE_DIR/frontend" -type f -name "*.html" 2>/dev/null | head -10 || echo "    No HTML files found"
+        find "$SOURCE_DIR/frontend" -type d 2>/dev/null | head -10 || echo "    Cannot list directories"
+    else
+        echo "  Frontend directory does not exist at: $SOURCE_DIR/frontend"
+    fi
+    
+    # Check if file exists elsewhere
+    echo "  Searching for index.html in repository..."
+    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR/temp-repo" ]; then
+        find "$TEMP_DIR/temp-repo" -name "index.html" -type f 2>/dev/null | head -5 || echo "    No index.html files found"
+    fi
+    
     echo "  Please ensure dashboard/frontend/dist/index.html exists in GitHub repository"
+    echo "  If file exists locally, push it to GitHub:"
+    echo "    git add dashboard/frontend/dist/index.html"
+    echo "    git commit -m 'Add complete dashboard UI'"
+    echo "    git push origin master"
 fi
 
 # Ensure API endpoint exists and is correct
