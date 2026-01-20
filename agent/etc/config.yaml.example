@@ -7,11 +7,11 @@ agent:
   version: "1.0.0"
 
 dashboard:
-  url: "https://dashboard.example.com"     # URL dashboard central
+  url: "https://dashboard.example.com"     # URL dashboard central (bisa pakai IP: http://192.168.1.100)
   api_version: "v1"
   token: ""                                 # Token akan diisi saat instalasi
   token_file: "/opt/devops-agent/etc/token" # File encrypted token
-  verify_ssl: true
+  verify_ssl: true                          # Set false jika pakai HTTP atau self-signed certificate
   timeout: 30                               # seconds
 
 heartbeat:

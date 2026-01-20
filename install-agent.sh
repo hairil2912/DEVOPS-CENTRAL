@@ -123,27 +123,107 @@ if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
     rm -rf $TEMP_DIR
 fi
 
-# Install dependencies
-if command -v pip3 &> /dev/null; then
-    pip3 install -r $AGENT_DIR/requirements.txt
-else
-    echo "Installing pip3..."
+# Check Python version and install dependencies
+echo "Checking Python version..."
+PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
+PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
+
+PYTHON3_CMD="python3"
+PIP3_CMD="pip3"
+USE_PY36=false
+
+# Check if Python 3.8+ is available
+if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]); then
+    echo "Python 3.6 detected. Attempting to install Python 3.8+..."
+    
     if command -v dnf &> /dev/null; then
-        dnf install -y python3-pip
+        # AlmaLinux 8 - install Python 3.8 from appstream
+        if dnf module install -y python38 2>/dev/null && dnf install -y python38 python38-pip 2>/dev/null; then
+            PYTHON3_CMD="python3.8"
+            PIP3_CMD="pip3.8"
+            echo "Python 3.8 installed successfully"
+        else
+            echo -e "${YELLOW}Warning: Python 3.8 installation failed. Using Python 3.6 with compatible packages...${NC}"
+            USE_PY36=true
+        fi
     elif command -v apt-get &> /dev/null; then
-        apt-get update && apt-get install -y python3-pip
+        apt-get update
+        if apt-get install -y python3.8 python3.8-pip 2>/dev/null; then
+            PYTHON3_CMD="python3.8"
+            PIP3_CMD="pip3.8"
+            echo "Python 3.8 installed successfully"
+        else
+            echo -e "${YELLOW}Warning: Python 3.8 installation failed. Using Python 3.6 with compatible packages...${NC}"
+            USE_PY36=true
+        fi
+    else
+        echo -e "${YELLOW}Warning: Cannot install Python 3.8. Using Python 3.6 with compatible packages...${NC}"
+        USE_PY36=true
     fi
-    pip3 install -r $AGENT_DIR/requirements.txt
+fi
+
+# Install dependencies
+if [ "$USE_PY36" = true ]; then
+    # Install compatible versions for Python 3.6
+    echo "Installing Python 3.6 compatible packages..."
+    $PIP3_CMD install --upgrade pip
+    if [ -f "$AGENT_DIR/requirements-py36.txt" ]; then
+        $PIP3_CMD install -r $AGENT_DIR/requirements-py36.txt
+    else
+        $PIP3_CMD install "requests>=2.20.0,<2.31.0" "urllib3>=1.26.0,<2.0.0" "pyyaml>=5.0,<6.0" python-dotenv "psutil>=5.7.0,<6.0.0" "cryptography>=3.0.0,<41.0.0" python-json-logger "python-dateutil>=2.7.0,<2.8.2"
+    fi
+else
+    # Upgrade pip first
+    echo "Upgrading pip..."
+    $PIP3_CMD install --upgrade pip
+    
+    # Install dependencies
+    echo "Installing Python dependencies..."
+    if [ -f "$AGENT_DIR/requirements.txt" ]; then
+        $PIP3_CMD install -r $AGENT_DIR/requirements.txt
+    else
+        echo -e "${YELLOW}Warning: requirements.txt not found. Installing basic packages...${NC}"
+        $PIP3_CMD install requests pyyaml python-dotenv psutil cryptography python-json-logger python-dateutil
+    fi
 fi
 
 # Setup config
 if [ ! -f "$AGENT_DIR/etc/config.yaml" ]; then
     cp $AGENT_DIR/etc/config.yaml.example $AGENT_DIR/etc/config.yaml
     read -p "Server name: " server_name
+    echo ""
+    echo "Dashboard URL (bisa pakai IP atau domain, HTTP atau HTTPS):"
+    echo "  Contoh: https://dashboard.example.com"
+    echo "  Contoh: http://192.168.1.100"
+    echo "  Contoh: https://192.168.1.100"
     read -p "Dashboard URL: " dashboard_url
-    agent_id=$(python3 -c "import uuid; print(uuid.uuid4())" 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+    
+    # Auto-detect if HTTP or HTTPS
+    if [[ "$dashboard_url" == http://* ]]; then
+        verify_ssl="false"
+        echo "Detected HTTP - SSL verification disabled"
+    elif [[ "$dashboard_url" == https://* ]]; then
+        # Check if IP address (simple check)
+        if [[ "$dashboard_url" =~ https://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            verify_ssl="false"
+            echo "Detected HTTPS with IP - SSL verification disabled (recommended for IP)"
+        else
+            verify_ssl="true"
+            echo "Detected HTTPS with domain - SSL verification enabled"
+        fi
+    else
+        # No protocol specified, assume HTTP
+        dashboard_url="http://$dashboard_url"
+        verify_ssl="false"
+        echo "No protocol specified, using HTTP"
+    fi
+    
+    # Use the correct Python command
+    agent_id=$($PYTHON3_CMD -c "import uuid; print(uuid.uuid4())" 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     sed -i "s/name: \"\"/name: \"$server_name\"/" $AGENT_DIR/etc/config.yaml
     sed -i "s|url: \".*\"|url: \"$dashboard_url\"|" $AGENT_DIR/etc/config.yaml
+    sed -i "s|verify_ssl: true|verify_ssl: $verify_ssl|" $AGENT_DIR/etc/config.yaml
     sed -i "s/id: \"\"/id: \"$agent_id\"/" $AGENT_DIR/etc/config.yaml
 fi
 
