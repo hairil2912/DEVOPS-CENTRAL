@@ -181,7 +181,10 @@ else
     # Install dependencies
     echo "Installing Python dependencies..."
     if [ -f "$AGENT_DIR/requirements.txt" ]; then
-        $PIP3_CMD install -r $AGENT_DIR/requirements.txt
+        # Filter out built-in modules (sqlite3) before installing
+        grep -v "^sqlite3" "$AGENT_DIR/requirements.txt" > /tmp/requirements_filtered.txt 2>/dev/null || cp "$AGENT_DIR/requirements.txt" /tmp/requirements_filtered.txt
+        $PIP3_CMD install -r /tmp/requirements_filtered.txt
+        rm -f /tmp/requirements_filtered.txt
     else
         echo -e "${YELLOW}Warning: requirements.txt not found. Installing basic packages...${NC}"
         $PIP3_CMD install requests pyyaml python-dotenv psutil cryptography python-json-logger python-dateutil
