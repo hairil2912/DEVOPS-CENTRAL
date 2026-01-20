@@ -763,9 +763,45 @@ if nginx -t 2>/dev/null; then
         echo "Retrying Nginx start..."
         systemctl start nginx
         sleep 2
+        
         if ! systemctl is-active --quiet nginx; then
-            echo "Checking Nginx error..."
-            systemctl status nginx --no-pager | head -20
+            # Check if it's permission denied (SELinux issue)
+            NGINX_STATUS=$(systemctl status nginx --no-pager 2>&1)
+            if echo "$NGINX_STATUS" | grep -q "Permission denied\|bind.*failed.*13"; then
+                echo "⚠ Detected permission denied error (likely SELinux)"
+                echo "Fixing SELinux port binding..."
+                
+                # Install policycoreutils-python-utils if needed (for semanage)
+                if ! command -v semanage &> /dev/null; then
+                    echo "Installing SELinux management tools..."
+                    if command -v dnf &> /dev/null; then
+                        dnf install -y policycoreutils-python-utils 2>/dev/null || true
+                    elif command -v apt-get &> /dev/null; then
+                        apt-get install -y policycoreutils-python-utils 2>/dev/null || true
+                    fi
+                fi
+                
+                # Allow port in SELinux
+                if command -v semanage &> /dev/null; then
+                    echo "Allowing port $DASHBOARD_PORT in SELinux..."
+                    semanage port -a -t http_port_t -p tcp $DASHBOARD_PORT 2>/dev/null || \
+                    semanage port -m -t http_port_t -p tcp $DASHBOARD_PORT 2>/dev/null || true
+                fi
+                
+                # Set SELinux boolean
+                if command -v setsebool &> /dev/null; then
+                    setsebool -P httpd_can_network_connect 1 2>/dev/null || true
+                    setsebool -P httpd_can_network_bind_service 1 2>/dev/null || true
+                fi
+                
+                # Retry start
+                echo "Retrying Nginx start after SELinux fix..."
+                systemctl start nginx
+                sleep 3
+            else
+                echo "Checking Nginx error..."
+                systemctl status nginx --no-pager | head -20
+            fi
         fi
     fi
     
@@ -973,14 +1009,40 @@ else
     echo -e "${YELLOW}No firewall manager detected. Port $DASHBOARD_PORT may need manual configuration.${NC}"
 fi
 
-# SELinux (jika aktif, allow HTTP)
+# SELinux (jika aktif, allow HTTP dan port binding)
 if command -v getenforce &> /dev/null; then
     if [ "$(getenforce)" = "Enforcing" ]; then
         echo "Configuring SELinux..."
+        
+        # Install semanage if not available (for port management)
+        if ! command -v semanage &> /dev/null; then
+            echo "Installing SELinux management tools..."
+            if command -v dnf &> /dev/null; then
+                dnf install -y policycoreutils-python-utils 2>/dev/null || true
+            elif command -v apt-get &> /dev/null; then
+                apt-get install -y policycoreutils-python-utils 2>/dev/null || true
+            elif command -v yum &> /dev/null; then
+                yum install -y policycoreutils-python-utils 2>/dev/null || true
+            fi
+        fi
+        
+        # Set SELinux booleans
         if command -v setsebool &> /dev/null; then
             setsebool -P httpd_can_network_connect 1 2>/dev/null || true
             setsebool -P httpd_can_network_relay 1 2>/dev/null || true
+            setsebool -P httpd_can_network_bind_service 1 2>/dev/null || true
         fi
+        
+        # Allow Nginx to bind to non-standard ports (required for random port)
+        if command -v semanage &> /dev/null; then
+            echo "Allowing Nginx to bind to port $DASHBOARD_PORT..."
+            semanage port -a -t http_port_t -p tcp $DASHBOARD_PORT 2>/dev/null || \
+            semanage port -m -t http_port_t -p tcp $DASHBOARD_PORT 2>/dev/null || true
+            echo "✓ Port $DASHBOARD_PORT allowed in SELinux"
+        else
+            echo "⚠ semanage not available, using boolean only"
+        fi
+        
         echo "✓ SELinux configured"
     fi
 fi
