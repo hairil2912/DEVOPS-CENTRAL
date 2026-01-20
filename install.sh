@@ -30,6 +30,36 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Check and install required tools
+echo "Checking required tools..."
+
+# Check curl
+if ! command -v curl &> /dev/null; then
+    echo "Installing curl..."
+    if command -v dnf &> /dev/null; then
+        dnf install -y curl
+    elif command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y curl
+    elif command -v yum &> /dev/null; then
+        yum install -y curl
+    else
+        echo -e "${RED}Error: curl is required but cannot be auto-installed${NC}"
+        exit 1
+    fi
+fi
+
+# Check wget (optional, but useful)
+if ! command -v wget &> /dev/null; then
+    echo "Installing wget..."
+    if command -v dnf &> /dev/null; then
+        dnf install -y wget
+    elif command -v apt-get &> /dev/null; then
+        apt-get install -y wget
+    elif command -v yum &> /dev/null; then
+        yum install -y wget
+    fi
+fi
+
 # Detect OS
 detect_os() {
     if [ -f /etc/os-release ]; then
