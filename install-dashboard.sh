@@ -11,8 +11,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
+VERSION="1.0.0"
 
-echo -e "${GREEN}Installing DevOps Dashboard...${NC}"
+echo -e "${GREEN}Installing DevOps Dashboard v${VERSION}...${NC}"
 
 # Check root
 if [ "$EUID" -ne 0 ]; then 
@@ -777,87 +778,17 @@ EOF
 
 echo "✓ Nginx config created with port $DASHBOARD_PORT"
 
-# Ensure frontend/dist exists (AUTO - create working frontend)
-if [ ! -d "$DASHBOARD_DIR/frontend/dist" ] || [ -z "$(ls -A $DASHBOARD_DIR/frontend/dist 2>/dev/null)" ]; then
-    echo "Frontend dist not found or empty, creating working frontend..."
+# Ensure frontend/dist exists (should be copied from source)
+if [ ! -d "$DASHBOARD_DIR/frontend/dist" ]; then
+    echo "Creating frontend/dist directory..."
     mkdir -p $DASHBOARD_DIR/frontend/dist
-    
-    # Create a working dashboard frontend
-    cat > $DASHBOARD_DIR/frontend/dist/index.html <<'HTMLDASHBOARD'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevOps Central Dashboard</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #333;
-        }
-        .container {
-            background: white;
-            border-radius: 10px;
-            padding: 40px;
-            max-width: 600px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            text-align: center;
-        }
-        h1 { color: #667eea; margin-bottom: 20px; font-size: 2.5em; }
-        .status { 
-            background: #e8f5e9; 
-            color: #2e7d32; 
-            padding: 15px; 
-            border-radius: 5px; 
-            margin: 20px 0;
-            border-left: 4px solid #4caf50;
-        }
-        .info { 
-            background: #e3f2fd; 
-            color: #1565c0; 
-            padding: 15px; 
-            border-radius: 5px; 
-            margin: 20px 0;
-            border-left: 4px solid #2196f3;
-            text-align: left;
-        }
-        .info code { background: #fff; padding: 2px 6px; border-radius: 3px; }
-        .btn {
-            display: inline-block;
-            background: #667eea;
-            color: white;
-            padding: 12px 30px;
-            border-radius: 5px;
-            text-decoration: none;
-            margin-top: 20px;
-            transition: background 0.3s;
-        }
-        .btn:hover { background: #5568d3; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🚀 DevOps Central</h1>
-        <div class="status">
-            <strong>✓ Dashboard is running!</strong>
-        </div>
-        <div class="info">
-            <p><strong>Status:</strong> Dashboard backend is ready</p>
-            <p><strong>API Endpoint:</strong> <code>/api</code></p>
-            <p><strong>Note:</strong> Full frontend will be available after build completes</p>
-        </div>
-        <p>Dashboard is operational and ready to accept agent connections.</p>
-    </div>
-</body>
-</html>
-HTMLDASHBOARD
-    echo "✓ Working frontend created"
+fi
+
+# Verify frontend file exists (should be from cloned repository)
+if [ ! -f "$DASHBOARD_DIR/frontend/dist/index.html" ]; then
+    echo "⚠ Frontend index.html not found after copy"
+    echo "  This should be in the repository at: dashboard/frontend/dist/index.html"
+    echo "  Please ensure the file exists in your GitHub repository"
 fi
 
 # Remove old config if exists (to avoid conflicts)
@@ -1254,19 +1185,13 @@ else
     sleep 3
 fi
 
-# Verify frontend exists
+# Verify frontend exists (should be copied from cloned repository)
 if [ -f "$DASHBOARD_DIR/frontend/dist/index.html" ]; then
-    echo "✓ Frontend files exist"
+    echo "✓ Frontend files exist (from repository)"
 else
-    echo "Creating frontend files..."
-    mkdir -p $DASHBOARD_DIR/frontend/dist
-    cat > $DASHBOARD_DIR/frontend/dist/index.html <<'EOF'
-<!DOCTYPE html>
-<html>
-<head><title>DevOps Dashboard</title></head>
-<body><h1>Dashboard Ready</h1><p>Backend is operational</p></body>
-</html>
-EOF
+    echo "⚠ Frontend index.html not found"
+    echo "  Expected location: $DASHBOARD_DIR/frontend/dist/index.html"
+    echo "  Please ensure dashboard/frontend/dist/index.html exists in your GitHub repository"
 fi
 
 # Final test and auto-fix 403 error
