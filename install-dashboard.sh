@@ -788,6 +788,24 @@ chown -R $NGINX_USER:$NGINX_USER $DASHBOARD_DIR 2>/dev/null || true
 chmod -R 755 $DASHBOARD_DIR 2>/dev/null || true
 chmod -R 775 $DASHBOARD_DIR/backend/storage 2>/dev/null || true
 chmod -R 755 $DASHBOARD_DIR/frontend/dist 2>/dev/null || true
+
+# Fix SELinux context if SELinux is enabled
+if command -v getenforce &> /dev/null && [ "$(getenforce)" = "Enforcing" ]; then
+    echo "Setting SELinux context..."
+    if command -v chcon &> /dev/null; then
+        chcon -R -t httpd_sys_content_t $DASHBOARD_DIR 2>/dev/null || true
+        chcon -R -t httpd_sys_rw_content_t $DASHBOARD_DIR/backend/storage 2>/dev/null || true
+    fi
+    # Allow Nginx to read files
+    setsebool -P httpd_read_user_content 1 2>/dev/null || true
+fi
+
+# Ensure frontend/dist is readable
+if [ -d "$DASHBOARD_DIR/frontend/dist" ]; then
+    chmod -R 755 $DASHBOARD_DIR/frontend/dist 2>/dev/null || true
+    chown -R $NGINX_USER:$NGINX_USER $DASHBOARD_DIR/frontend/dist 2>/dev/null || true
+fi
+
 echo "✓ Permissions set"
 
 # Firewall Configuration (auto-setup untuk port random)
