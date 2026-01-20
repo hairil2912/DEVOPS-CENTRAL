@@ -20,6 +20,8 @@ fi
 
 AGENT_DIR="/opt/devops-agent"
 AGENT_USER="devops-agent"
+REPO_URL="https://github.com/hairil2912/DEVOPS-CENTRAL"
+BRANCH="master"
 
 # Create user
 if ! id "$AGENT_USER" &>/dev/null; then
@@ -27,25 +29,69 @@ if ! id "$AGENT_USER" &>/dev/null; then
     groupadd -r $AGENT_USER 2>/dev/null || true
 fi
 
-# Download and extract (if from URL)
-if [ -z "$1" ]; then
-    # Assume files are in current directory
-    if [ ! -d "agent" ]; then
-        echo -e "${RED}Error: Agent files not found. Please run from project directory or provide URL${NC}"
-        exit 1
-    fi
+# Detect if running from curl or local
+TEMP_DIR=""
+SOURCE_DIR=""
+
+# Check if agent directory exists locally
+if [ -d "agent" ]; then
+    echo "Using local agent files..."
     SOURCE_DIR="agent"
 else
-    # Download from URL
-    echo "Downloading agent files..."
+    # Download from GitHub using git clone (faster and more reliable)
+    echo "Downloading agent files from GitHub..."
+    
+    # Check if git is installed
+    if ! command -v git &> /dev/null; then
+        echo "Installing git..."
+        if command -v dnf &> /dev/null; then
+            dnf install -y git
+        elif command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y git
+        elif command -v yum &> /dev/null; then
+            yum install -y git
+        else
+            echo -e "${RED}Error: git is not installed and cannot be auto-installed${NC}"
+            echo "Please install git manually: dnf install git (or apt-get install git)"
+            exit 1
+        fi
+    fi
+    
     TEMP_DIR=$(mktemp -d)
-    curl -sSL "$1" | tar -xz -C $TEMP_DIR
-    SOURCE_DIR="$TEMP_DIR/agent"
+    cd $TEMP_DIR
+    
+    # Clone repository (shallow clone, only master branch)
+    echo "Cloning repository..."
+    if git clone --depth 1 --branch $BRANCH $REPO_URL.git temp-repo 2>/dev/null; then
+        if [ -d "temp-repo/agent" ]; then
+            SOURCE_DIR="temp-repo/agent"
+        else
+            echo -e "${RED}Error: Agent directory not found in repository${NC}"
+            rm -rf $TEMP_DIR
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: Could not clone repository from GitHub${NC}"
+        echo "Please check:"
+        echo "1. Repository is public or you have access"
+        echo "2. Branch name is correct: $BRANCH"
+        echo "3. Internet connection is working"
+        echo "4. Git is properly installed"
+        rm -rf $TEMP_DIR
+        exit 1
+    fi
 fi
 
 # Install
+echo "Installing to $AGENT_DIR..."
 mkdir -p $AGENT_DIR
 cp -r $SOURCE_DIR/* $AGENT_DIR/ 2>/dev/null || true
+
+# Cleanup temp dir if used
+if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+    cd /
+    rm -rf $TEMP_DIR
+fi
 
 # Install dependencies
 if command -v pip3 &> /dev/null; then

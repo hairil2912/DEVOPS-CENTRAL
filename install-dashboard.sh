@@ -20,17 +20,73 @@ fi
 
 DASHBOARD_DIR="/var/www/devops-dashboard"
 NGINX_USER="nginx"
+REPO_URL="https://github.com/hairil2912/DEVOPS-CENTRAL"
+BRANCH="master"
 
 # Create directories
 mkdir -p $DASHBOARD_DIR/{backend,frontend,database,nginx,scripts}
 mkdir -p $DASHBOARD_DIR/backend/storage/{logs,cache,backups}
 
-# Copy files
+# Detect if running from curl or local
+TEMP_DIR=""
+SOURCE_DIR=""
+
+# Check if dashboard directory exists locally
 if [ -d "dashboard" ]; then
-    cp -r dashboard/* $DASHBOARD_DIR/
+    echo "Using local dashboard files..."
+    SOURCE_DIR="dashboard"
 else
-    echo -e "${RED}Error: Dashboard files not found${NC}"
-    exit 1
+    # Download from GitHub using git clone
+    echo "Downloading dashboard files from GitHub..."
+    
+    # Check if git is installed
+    if ! command -v git &> /dev/null; then
+        echo "Installing git..."
+        if command -v dnf &> /dev/null; then
+            dnf install -y git
+        elif command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y git
+        elif command -v yum &> /dev/null; then
+            yum install -y git
+        else
+            echo -e "${RED}Error: git is not installed and cannot be auto-installed${NC}"
+            echo "Please install git manually: dnf install git (or apt-get install git)"
+            exit 1
+        fi
+    fi
+    
+    TEMP_DIR=$(mktemp -d)
+    cd $TEMP_DIR
+    
+    # Clone repository (shallow clone, only master branch)
+    echo "Cloning repository..."
+    if git clone --depth 1 --branch $BRANCH $REPO_URL.git temp-repo 2>/dev/null; then
+        if [ -d "temp-repo/dashboard" ]; then
+            SOURCE_DIR="temp-repo/dashboard"
+        else
+            echo -e "${RED}Error: Dashboard directory not found in repository${NC}"
+            rm -rf $TEMP_DIR
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: Could not clone repository from GitHub${NC}"
+        echo "Please check:"
+        echo "1. Repository is public or you have access"
+        echo "2. Branch name is correct: $BRANCH"
+        echo "3. Internet connection is working"
+        echo "4. Git is properly installed"
+        rm -rf $TEMP_DIR
+        exit 1
+    fi
+fi
+
+# Copy files
+cp -r $SOURCE_DIR/* $DASHBOARD_DIR/
+
+# Cleanup temp dir if used
+if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+    cd /
+    rm -rf $TEMP_DIR
 fi
 
 # Install PHP dependencies
