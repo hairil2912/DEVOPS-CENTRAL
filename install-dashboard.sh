@@ -432,12 +432,18 @@ fi
 
 echo "✓ Server IP detected: $SERVER_IP"
 
-# Generate random port SEBELUM setup .env
+# Check for existing port or generate new one
 echo ""
-echo "=== Generating Random Port ==="
+echo "=== Dashboard Port Configuration ==="
+PORT_FILE="/var/www/devops-dashboard/.dashboard_port"
 DASHBOARD_PORT=""
-MAX_ATTEMPTS=10
-ATTEMPT=0
+FORCE_NEW_PORT=false
+
+# Check for environment variable to force new port
+if [ "$FORCE_NEW_PORT" = "true" ] || [ -n "$DASHBOARD_NEW_PORT" ]; then
+    echo "Force generating new port (FORCE_NEW_PORT=true)..."
+    rm -f $PORT_FILE 2>/dev/null || true
+fi
 
 # Function to check if port is available
 check_port() {
@@ -452,33 +458,64 @@ check_port() {
     return 0
 }
 
-# Generate random port yang belum digunakan (10000-65535)
-while [ -z "$DASHBOARD_PORT" ] && [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    # Generate port antara 10000-65535
-    RANDOM_PORT=$((RANDOM % 55536 + 10000))
-    
-    if check_port $RANDOM_PORT; then
-        DASHBOARD_PORT=$RANDOM_PORT
-        echo "✓ Random port generated: $DASHBOARD_PORT"
+# Check if port file exists and port is still valid
+if [ -f "$PORT_FILE" ] && [ "$FORCE_NEW_PORT" != "true" ]; then
+    EXISTING_PORT=$(cat $PORT_FILE 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$EXISTING_PORT" ] && [ "$EXISTING_PORT" -gt 0 ] && [ "$EXISTING_PORT" -lt 65536 ] 2>/dev/null; then
+        # Check if port is still available
+        if check_port $EXISTING_PORT; then
+            DASHBOARD_PORT=$EXISTING_PORT
+            echo "✓ Found existing port: $DASHBOARD_PORT"
+            echo "  Using existing port"
+            echo "  To change port: rm $PORT_FILE && reinstall, or set FORCE_NEW_PORT=true"
+        else
+            echo "⚠ Existing port $EXISTING_PORT is in use, generating new port..."
+        fi
     else
-        ATTEMPT=$((ATTEMPT + 1))
-        echo "Port $RANDOM_PORT is in use, trying another..."
+        echo "⚠ Invalid port in file, generating new port..."
     fi
-done
-
-# Fallback jika semua port terpakai (sangat jarang)
-if [ -z "$DASHBOARD_PORT" ]; then
-    echo -e "${YELLOW}Warning: Could not find available port. Using default 8888${NC}"
-    DASHBOARD_PORT=8888
-    if ! check_port $DASHBOARD_PORT; then
-        echo -e "${RED}Error: Port 8888 also in use. Please free a port manually.${NC}"
-        exit 1
+else
+    if [ "$FORCE_NEW_PORT" = "true" ]; then
+        echo "Generating new port (forced)..."
+    else
+        echo "No existing port found, generating new port..."
     fi
 fi
 
-# Save port to file untuk reference
-echo "$DASHBOARD_PORT" > /var/www/devops-dashboard/.dashboard_port 2>/dev/null || true
-chmod 600 /var/www/devops-dashboard/.dashboard_port 2>/dev/null || true
+# Generate new port if needed
+if [ -z "$DASHBOARD_PORT" ]; then
+    echo "Generating random port (10000-65535)..."
+    MAX_ATTEMPTS=10
+    ATTEMPT=0
+    
+    while [ -z "$DASHBOARD_PORT" ] && [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+        # Generate port antara 10000-65535
+        RANDOM_PORT=$((RANDOM % 55536 + 10000))
+        
+        if check_port $RANDOM_PORT; then
+            DASHBOARD_PORT=$RANDOM_PORT
+            echo "✓ Random port generated: $DASHBOARD_PORT"
+        else
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Port $RANDOM_PORT is in use, trying another..."
+        fi
+    done
+    
+    # Fallback jika semua port terpakai (sangat jarang)
+    if [ -z "$DASHBOARD_PORT" ]; then
+        echo -e "${YELLOW}Warning: Could not find available port. Using default 8888${NC}"
+        DASHBOARD_PORT=8888
+        if ! check_port $DASHBOARD_PORT; then
+            echo -e "${RED}Error: Port 8888 also in use. Please free a port manually.${NC}"
+            exit 1
+        fi
+    fi
+fi
+
+# Save port to file untuk reference (selalu update untuk memastikan)
+echo "$DASHBOARD_PORT" > $PORT_FILE 2>/dev/null || true
+chmod 600 $PORT_FILE 2>/dev/null || true
+echo "✓ Port saved to: $PORT_FILE"
 
 # Setup .env with IP and Port
 if [ -f "$DASHBOARD_DIR/backend/env.example" ]; then
@@ -554,17 +591,24 @@ server {
 
     # API Backend
     location /api {
-        try_files \$uri \$uri/ /backend/public/index.php?\$query_string;
+        # Direct all API requests to index.php
+        try_files \$uri \$uri/ /backend/public/index.php\$is_args\$args;
         
         fastcgi_pass $PHP_FPM_UPSTREAM_NAME;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME /var/www/devops-dashboard/backend/public/index.php;
+        fastcgi_param REQUEST_URI \$request_uri;
         include fastcgi_params;
         
         # CORS headers
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
-        add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+        
+        # Handle OPTIONS preflight
+        if (\$request_method = OPTIONS) {
+            return 204;
+        }
     }
 
     # Frontend Static Files
