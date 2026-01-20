@@ -6,13 +6,13 @@ DevOps Central dapat diinstall dengan **satu baris command** seperti aaPanel!
 
 ### Option 1: Dari Git Repository
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install-agent.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh | bash
 ```
 
 ### Option 2: Dari Local Files
 ```bash
 # Clone repository dulu
-git clone https://github.com/your-org/devops-central.git
+git clone https://github.com/hairil2912/DEVOPS-CENTRAL.git
 cd devops-central
 
 # Install agent
@@ -21,7 +21,7 @@ bash install-agent.sh
 
 ### Option 3: Interactive Installer
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install.sh | bash
 # Pilih option 1 untuk Agent
 ```
 
@@ -31,13 +31,13 @@ curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install
 
 ### Option 1: Dari Git Repository
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install-dashboard.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh | bash
 ```
 
 ### Option 2: Dari Local Files
 ```bash
 # Clone repository dulu
-git clone https://github.com/your-org/devops-central.git
+git clone https://github.com/hairil2912/DEVOPS-CENTRAL.git
 cd devops-central
 
 # Install dashboard
@@ -46,7 +46,7 @@ bash install-dashboard.sh
 
 ### Option 3: Interactive Installer
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install.sh | bash
 # Pilih option 2 untuk Dashboard
 ```
 
@@ -72,7 +72,7 @@ curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install
 
 ### 1. Install Agent di Client Server
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install-agent.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh | bash
 ```
 
 **Yang akan dilakukan:**
@@ -91,7 +91,7 @@ curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install
 
 ### 2. Install Dashboard di Central Server
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install-dashboard.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh | bash
 ```
 
 **Yang akan dilakukan:**

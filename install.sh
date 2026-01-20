@@ -1,6 +1,6 @@
 #!/bin/bash
 # DevOps Central - One-Line Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/your-repo/devops-central/main/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install.sh | bash
 
 set -e
 

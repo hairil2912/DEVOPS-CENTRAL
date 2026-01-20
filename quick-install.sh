@@ -1,6 +1,6 @@
 #!/bin/bash
 # DevOps Central - Quick Install (Auto-detect)
-# Usage: curl -sSL https://raw.githubusercontent.com/your-repo/devops-central/main/quick-install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/quick-install.sh | bash
 
 set -e
 

@@ -7,7 +7,7 @@ Install DevOps Central dengan **satu baris command** seperti aaPanel!
 ## 🤖 Install Agent
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install-agent.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh | bash
 ```
 
 **Atau jika sudah clone repository:**
@@ -20,7 +20,7 @@ bash install-agent.sh
 ## 🎛️ Install Dashboard
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install-dashboard.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh | bash
 ```
 
 **Atau jika sudah clone repository:**
@@ -35,7 +35,7 @@ bash install-dashboard.sh
 Pilih Agent atau Dashboard secara interaktif:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/devops-central/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install.sh | bash
 ```
 
 ---

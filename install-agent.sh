@@ -1,6 +1,6 @@
 #!/bin/bash
 # DevOps Central - Agent One-Line Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/your-repo/devops-central/main/install-agent.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh | bash
 
 set -e
 
