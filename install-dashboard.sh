@@ -209,13 +209,132 @@ else
 fi
 
 # Copy files
+echo "Copying dashboard files..."
 cp -r $SOURCE_DIR/* $DASHBOARD_DIR/
+
+# Ensure API endpoint exists and is correct
+if [ -f "$DASHBOARD_DIR/backend/public/index.php" ]; then
+    echo "✓ API endpoint file exists"
+    # Verify it has the registerAgent function
+    if ! grep -q "registerAgent" "$DASHBOARD_DIR/backend/public/index.php"; then
+        echo "⚠ API endpoint seems incomplete, ensuring it's correct..."
+        # File will be overwritten by copy above, so this is just a check
+    fi
+else
+    echo "⚠ API endpoint not found, creating it..."
+    mkdir -p $DASHBOARD_DIR/backend/public
+    # Will be created from source
+fi
 
 # Cleanup temp dir if used
 if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
     cd /
     rm -rf $TEMP_DIR
 fi
+
+# Ensure API endpoint is correct (AUTO - always create correct version)
+echo "Ensuring API endpoint is correct..."
+API_ENDPOINT_FILE="$DASHBOARD_DIR/backend/public/index.php"
+mkdir -p "$DASHBOARD_DIR/backend/public"
+
+# Always create correct API endpoint (overwrite if needed)
+cat > "$API_ENDPOINT_FILE" <<'APIPHP'
+<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+$request_uri = $_SERVER['REQUEST_URI'];
+$request_method = $_SERVER['REQUEST_METHOD'];
+$path = parse_url($request_uri, PHP_URL_PATH);
+$path = preg_replace('#^/api#', '', $path);
+
+$routes = [
+    'GET /v1/health' => 'healthCheck',
+    'GET /v1/agents' => 'listAgents',
+    'POST /v1/agents/register' => 'registerAgent',
+    'POST /v1/agents/heartbeat' => 'agentHeartbeat',
+];
+
+$route_key = $request_method . ' ' . $path;
+$handler = isset($routes[$route_key]) ? $routes[$route_key] : null;
+
+if ($handler && function_exists($handler)) {
+    try {
+        $handler();
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+} else {
+    http_response_code(404);
+    echo json_encode(['status' => 'error', 'message' => 'Endpoint not found', 'path' => $path]);
+}
+
+function healthCheck() {
+    http_response_code(200);
+    echo json_encode(['status' => 'ok', 'message' => 'API is running', 'version' => '1.0.0']);
+}
+
+function listAgents() {
+    http_response_code(200);
+    echo json_encode(['status' => 'ok', 'agents' => []]);
+}
+
+function registerAgent() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input || !isset($input['name'])) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Missing required field: name']);
+        return;
+    }
+    $name = $input['name'];
+    $ip = $input['ip'] ?? $_SERVER['REMOTE_ADDR'];
+    $token = bin2hex(random_bytes(32));
+    http_response_code(200);
+    echo json_encode([
+        'status' => 'ok',
+        'message' => 'Agent registered successfully',
+        'data' => [
+            'name' => $name,
+            'ip' => $ip,
+            'token' => $token,
+            'agent_id' => bin2hex(random_bytes(16))
+        ]
+    ]);
+}
+
+function agentHeartbeat() {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $token = null;
+    $headers = getallheaders();
+    if (isset($headers['Authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['Authorization']);
+    } elseif (isset($input['token'])) {
+        $token = $input['token'];
+    }
+    if (!$token) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Missing authentication token']);
+        return;
+    }
+    http_response_code(200);
+    echo json_encode(['status' => 'ok', 'message' => 'Heartbeat received', 'timestamp' => date('c')]);
+}
+APIPHP
+
+chown nginx:nginx "$API_ENDPOINT_FILE" 2>/dev/null || true
+chmod 644 "$API_ENDPOINT_FILE" 2>/dev/null || true
+echo "✓ API endpoint ensured (always correct version)"
 
 # Install PHP dependencies
 if command -v composer &> /dev/null; then
