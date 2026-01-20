@@ -523,8 +523,13 @@ echo "Using port: $DASHBOARD_PORT"
 
 # Check PHP-FPM socket
 PHP_FPM_SOCKET="/run/php-fpm/www.sock"
-if [ ! -S "$PHP_FPM_SOCKET" ]; then
-    PHP_FPM_SOCKET="127.0.0.1:9000"
+PHP_FPM_UPSTREAM=""
+if [ -S "$PHP_FPM_SOCKET" ]; then
+    # Socket exists, use unix socket format
+    PHP_FPM_UPSTREAM="server unix:$PHP_FPM_SOCKET;"
+else
+    # Socket doesn't exist, use TCP
+    PHP_FPM_UPSTREAM="server 127.0.0.1:9000;"
 fi
 
 # Create Nginx config dengan IP dan Random Port
@@ -532,7 +537,7 @@ cat > /etc/nginx/conf.d/devops-dashboard.conf <<EOF
 # DevOps Dashboard - Auto-configured with IP and Random Port
 # Port: $DASHBOARD_PORT (for security)
 upstream php-fpm {
-    server $PHP_FPM_SOCKET;
+    $PHP_FPM_UPSTREAM
 }
 
 server {
@@ -697,12 +702,34 @@ if nginx -t 2>/dev/null; then
         sleep 2
     fi
 else
-    echo -e "${YELLOW}Nginx config test had issues, attempting to fix...${NC}"
-    # Try to fix common issues
-    nginx -t 2>&1 | head -5
-    # Still try to start/reload
-    systemctl restart nginx 2>/dev/null || systemctl start nginx 2>/dev/null || true
-    echo "✓ Nginx service attempted"
+    echo -e "${YELLOW}Nginx config test failed. Fixing config...${NC}"
+    # Show error
+    nginx -t 2>&1 | head -10
+    
+    # Try to fix: check if socket format is wrong
+    if grep -q "server /run/php-fpm/www.sock" /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null; then
+        echo "Fixing PHP-FPM socket format..."
+        sed -i 's|server /run/php-fpm/www.sock|server unix:/run/php-fpm/www.sock|' /etc/nginx/conf.d/devops-dashboard.conf
+    fi
+    
+    # Test again
+    if nginx -t 2>/dev/null; then
+        systemctl restart nginx
+        sleep 2
+        echo "✓ Nginx config fixed and restarted"
+    else
+        # Fallback to TCP if socket doesn't work
+        echo "Falling back to TCP connection..."
+        sed -i 's|server unix:/run/php-fpm/www.sock|server 127.0.0.1:9000|' /etc/nginx/conf.d/devops-dashboard.conf
+        if nginx -t 2>/dev/null; then
+            systemctl restart nginx
+            sleep 2
+            echo "✓ Nginx config fixed (using TCP)"
+        else
+            echo -e "${RED}Nginx config still has errors. Please check manually.${NC}"
+            nginx -t
+        fi
+    fi
 fi
 
 # Setup PHP-FPM untuk Nginx user (AUTO - ensure it's running)
