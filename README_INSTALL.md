@@ -4,24 +4,39 @@ DevOps Central dapat diinstall dengan **satu baris command** seperti aaPanel!
 
 ## 📦 Install Agent (Client Server)
 
-### Option 1: Dari Git Repository
+### Option 1: Dari Git Repository (Setelah di-push ke GitHub)
 ```bash
 curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh | bash
 ```
 
-### Option 2: Dari Local Files
+**Note:** Pastikan file sudah di-push ke GitHub repository terlebih dahulu!
+
+### Option 2: Dari Local Files (Recommended untuk testing)
 ```bash
 # Clone repository dulu
 git clone https://github.com/hairil2912/DEVOPS-CENTRAL.git
-cd devops-central
+cd DEVOPS-CENTRAL
 
 # Install agent
 bash install-agent.sh
 ```
 
-### Option 3: Interactive Installer
+### Option 3: Download Manual
 ```bash
+# Download script
+wget https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh
+chmod +x install-agent.sh
+bash install-agent.sh
+```
+
+### Option 4: Interactive Installer
+```bash
+# Dari GitHub (setelah di-push)
 curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install.sh | bash
+
+# Atau dari local
+cd DEVOPS-CENTRAL
+bash install.sh
 # Pilih option 1 untuk Agent
 ```
 
@@ -29,24 +44,39 @@ curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/ins
 
 ## 🎛️ Install Dashboard (Central Server)
 
-### Option 1: Dari Git Repository
+### Option 1: Dari Git Repository (Setelah di-push ke GitHub)
 ```bash
 curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh | bash
 ```
 
-### Option 2: Dari Local Files
+**Note:** Pastikan file sudah di-push ke GitHub repository terlebih dahulu!
+
+### Option 2: Dari Local Files (Recommended untuk testing)
 ```bash
 # Clone repository dulu
 git clone https://github.com/hairil2912/DEVOPS-CENTRAL.git
-cd devops-central
+cd DEVOPS-CENTRAL
 
 # Install dashboard
 bash install-dashboard.sh
 ```
 
-### Option 3: Interactive Installer
+### Option 3: Download Manual
 ```bash
+# Download script
+wget https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh
+chmod +x install-dashboard.sh
+bash install-dashboard.sh
+```
+
+### Option 4: Interactive Installer
+```bash
+# Dari GitHub (setelah di-push)
 curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install.sh | bash
+
+# Atau dari local
+cd DEVOPS-CENTRAL
+bash install.sh
 # Pilih option 2 untuk Dashboard
 ```
 
@@ -71,8 +101,17 @@ curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/ins
 ## ⚡ Quick Start
 
 ### 1. Install Agent di Client Server
+
+**Jika file sudah di-push ke GitHub:**
 ```bash
 curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh | bash
+```
+
+**Atau dari local files:**
+```bash
+git clone https://github.com/hairil2912/DEVOPS-CENTRAL.git
+cd DEVOPS-CENTRAL
+bash install-agent.sh
 ```
 
 **Yang akan dilakukan:**
@@ -90,8 +129,17 @@ curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/ins
 ---
 
 ### 2. Install Dashboard di Central Server
+
+**Jika file sudah di-push ke GitHub:**
 ```bash
 curl -sSL https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-dashboard.sh | bash
+```
+
+**Atau dari local files:**
+```bash
+git clone https://github.com/hairil2912/DEVOPS-CENTRAL.git
+cd DEVOPS-CENTRAL
+bash install-dashboard.sh
 ```
 
 **Yang akan dilakukan:**
@@ -170,6 +218,27 @@ mysql -u root -p -e "USE devops_dashboard; SHOW TABLES;"
 php -v
 php-fpm -v
 ```
+
+---
+
+## ⚠️ Important Notes
+
+### Sebelum Menggunakan One-Line Installer dari GitHub
+
+1. **Pastikan file sudah di-push ke GitHub:**
+   ```bash
+   git add install*.sh quick-install.sh
+   git commit -m "Add installation scripts"
+   git push origin master
+   ```
+
+2. **Verifikasi file bisa diakses:**
+   ```bash
+   curl -I https://raw.githubusercontent.com/hairil2912/DEVOPS-CENTRAL/master/install-agent.sh
+   # Harus return HTTP 200
+   ```
+
+3. **Jika file belum di-push, gunakan instalasi dari local files (Option 2)**
 
 ---
 
