@@ -11,7 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 echo -e "${GREEN}Installing DevOps Dashboard v${VERSION}...${NC}"
 
@@ -212,6 +212,14 @@ fi
 # Copy files
 echo "Copying dashboard files..."
 cp -r $SOURCE_DIR/* $DASHBOARD_DIR/
+
+# Ensure frontend UI is copied correctly (force copy if exists in source)
+if [ -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" ]; then
+    echo "Ensuring frontend UI is copied..."
+    mkdir -p $DASHBOARD_DIR/frontend/dist
+    cp -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+    echo "✓ Frontend UI copied from repository"
+fi
 
 # Ensure API endpoint exists and is correct
 if [ -f "$DASHBOARD_DIR/backend/public/index.php" ]; then
@@ -1185,13 +1193,44 @@ else
     sleep 3
 fi
 
-# Verify frontend exists (should be copied from cloned repository)
+# Verify frontend exists and check size (should be ~39KB for full UI, not 2.4KB placeholder)
 if [ -f "$DASHBOARD_DIR/frontend/dist/index.html" ]; then
-    echo "✓ Frontend files exist (from repository)"
+    # Get file size (works on both Linux and macOS)
+    FILE_SIZE=$(stat -f%z "$DASHBOARD_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$DASHBOARD_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
+    
+    # Full UI should be > 30KB, placeholder is ~2.4KB
+    if [ "$FILE_SIZE" -lt 10000 ]; then
+        echo "⚠ Frontend file is too small ($FILE_SIZE bytes) - detected placeholder"
+        echo "  Attempting to copy full UI from source..."
+        
+        # Try to copy from source directory (if still available)
+        if [ -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" ]; then
+            SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/dashboard/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/dashboard/frontend/dist/index.html" 2>/dev/null || echo "0")
+            if [ "$SOURCE_SIZE" -gt 10000 ]; then
+                cp -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+                echo "✓ Full UI copied from source (size: $SOURCE_SIZE bytes)"
+            else
+                echo "  Source file also seems to be placeholder"
+            fi
+        else
+            echo "  Source directory no longer available"
+            echo "  Please ensure dashboard/frontend/dist/index.html (full UI ~39KB) exists in GitHub repository"
+            echo "  Then re-run installer or manually copy the file"
+        fi
+    else
+        echo "✓ Frontend files exist (full UI, size: $FILE_SIZE bytes)"
+    fi
 else
     echo "⚠ Frontend index.html not found"
-    echo "  Expected location: $DASHBOARD_DIR/frontend/dist/index.html"
-    echo "  Please ensure dashboard/frontend/dist/index.html exists in your GitHub repository"
+    echo "  Attempting to copy from source..."
+    if [ -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" ]; then
+        mkdir -p $DASHBOARD_DIR/frontend/dist
+        cp -f "$SOURCE_DIR/dashboard/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+        echo "✓ Frontend UI copied from source"
+    else
+        echo "  Expected location: $DASHBOARD_DIR/frontend/dist/index.html"
+        echo "  Please ensure dashboard/frontend/dist/index.html exists in your GitHub repository"
+    fi
 fi
 
 # Final test and auto-fix 403 error
