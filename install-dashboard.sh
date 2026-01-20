@@ -264,11 +264,8 @@ else
     # Will be created from source
 fi
 
-# Cleanup temp dir if used
-if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-    cd /
-    rm -rf $TEMP_DIR
-fi
+# Cleanup temp dir will be done at the end, after all files are copied and verified
+# (Keep TEMP_DIR for now, will cleanup at the very end)
 
 # Ensure API endpoint is correct (AUTO - always create correct version)
 echo "Ensuring API endpoint is correct..."
@@ -1338,6 +1335,14 @@ if command -v curl &> /dev/null; then
     else
         echo "Dashboard response: HTTP $HTTP_CODE (may need a moment to start)"
     fi
+fi
+
+# Cleanup temp dir at the very end (after all files copied and verified)
+if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+    echo "Cleaning up temporary files..."
+    cd /
+    rm -rf $TEMP_DIR
+    echo "✓ Cleanup complete"
 fi
 
 echo ""
