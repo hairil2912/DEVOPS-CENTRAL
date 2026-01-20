@@ -179,13 +179,17 @@ else
     TEMP_DIR=$(mktemp -d)
     cd $TEMP_DIR
     
-    # Clone repository (shallow clone, only master branch)
+    # Clone repository (shallow clone, only master branch, always fresh)
     echo "Downloading dashboard files from GitHub (this may take 1-2 minutes)..."
     echo "Please wait..."
+    # Remove any existing temp-repo to ensure fresh clone
+    rm -rf temp-repo 2>/dev/null || true
+    
     if git clone --depth 1 --branch $BRANCH --single-branch --quiet --progress $REPO_URL.git temp-repo 2>&1; then
         echo "✓ Files downloaded successfully"
     else
         echo -e "${YELLOW}Retrying download...${NC}"
+        rm -rf temp-repo 2>/dev/null || true
         git clone --depth 1 --branch $BRANCH --single-branch --quiet $REPO_URL.git temp-repo
     fi
     
@@ -218,6 +222,12 @@ cp -r $SOURCE_DIR/* $DASHBOARD_DIR/
 if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
     echo "Ensuring frontend UI is copied..."
     mkdir -p $DASHBOARD_DIR/frontend/dist
+    
+    # Check source file size first
+    SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
+    echo "  Source file size from GitHub: $SOURCE_SIZE bytes"
+    
+    # Copy file
     cp -f "$SOURCE_DIR/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
     
     # Verify file size (should be ~39KB for full UI)
@@ -226,8 +236,18 @@ if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
         echo "✓ Frontend UI copied from repository (full UI, size: $FILE_SIZE bytes)"
     else
         echo "⚠ Frontend file seems to be placeholder (size: $FILE_SIZE bytes)"
-        echo "  Please ensure dashboard/frontend/dist/index.html (full UI ~39KB) exists in GitHub repository"
+        echo "  Source file from GitHub was also small ($SOURCE_SIZE bytes)"
+        echo "  This means the file in GitHub repository is still the old placeholder (2.4KB)"
+        echo ""
+        echo "  SOLUTION: Push the full UI file (39KB) to GitHub repository first:"
+        echo "    git add dashboard/frontend/dist/index.html"
+        echo "    git commit -m 'Add complete dashboard UI'"
+        echo "    git push origin master"
+        echo "  Then re-run this installer to get the updated file"
     fi
+else
+    echo "⚠ Frontend index.html not found in source: $SOURCE_DIR/frontend/dist/index.html"
+    echo "  Please ensure dashboard/frontend/dist/index.html exists in GitHub repository"
 fi
 
 # Ensure API endpoint exists and is correct
