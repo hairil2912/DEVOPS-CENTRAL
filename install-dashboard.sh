@@ -334,6 +334,17 @@ APIPHP
 
 chown nginx:nginx "$API_ENDPOINT_FILE" 2>/dev/null || true
 chmod 644 "$API_ENDPOINT_FILE" 2>/dev/null || true
+
+# Test PHP syntax
+if command -v php &> /dev/null; then
+    if php -l "$API_ENDPOINT_FILE" 2>/dev/null | grep -q "No syntax errors"; then
+        echo "✓ API endpoint syntax verified"
+    else
+        echo "⚠ PHP syntax check failed, but continuing..."
+        php -l "$API_ENDPOINT_FILE" 2>&1 | head -5
+    fi
+fi
+
 echo "✓ API endpoint ensured (always correct version)"
 
 # Install PHP dependencies
@@ -1025,22 +1036,41 @@ if [ -f "/etc/php-fpm.d/www.conf" ]; then
     sed -i 's/user = apache/user = nginx/' /etc/php-fpm.d/www.conf 2>/dev/null || true
     sed -i 's/group = apache/group = nginx/' /etc/php-fpm.d/www.conf 2>/dev/null || true
     
-    # Setup socket
-    if grep -q "listen = 127.0.0.1:9000" /etc/php-fpm.d/www.conf; then
-        sed -i 's|listen = 127.0.0.1:9000|listen = /run/php-fpm/www.sock|' /etc/php-fpm.d/www.conf
-        sed -i 's|;listen.owner = nobody|listen.owner = nginx|' /etc/php-fpm.d/www.conf
-        sed -i 's|;listen.group = nobody|listen.group = nginx|' /etc/php-fpm.d/www.conf
-        sed -i 's|;listen.mode = 0660|listen.mode = 0660|' /etc/php-fpm.d/www.conf
+    # Use TCP (127.0.0.1:9000) for better compatibility - socket can cause permission issues
+    if grep -q "listen = /run/php-fpm/www.sock" /etc/php-fpm.d/www.conf; then
+        echo "Switching PHP-FPM from socket to TCP..."
+        sed -i 's|listen = /run/php-fpm/www.sock|listen = 127.0.0.1:9000|' /etc/php-fpm.d/www.conf
     fi
+    # Ensure it's listening on TCP
+    if ! grep -q "^listen = 127.0.0.1:9000" /etc/php-fpm.d/www.conf; then
+        echo "Setting PHP-FPM to listen on TCP (127.0.0.1:9000)..."
+        # Find the listen line and replace it
+        sed -i '/^listen = /c\listen = 127.0.0.1:9000' /etc/php-fpm.d/www.conf
+    fi
+    echo "✓ PHP-FPM configured to use TCP (127.0.0.1:9000)"
     
     # Start and enable PHP-FPM (AUTO - ensure it's running)
     systemctl restart php-fpm 2>/dev/null || systemctl start php-fpm 2>/dev/null || true
     systemctl enable php-fpm 2>/dev/null || true
     
-    # Verify PHP-FPM is running
-    sleep 1
+    # Verify PHP-FPM is running and listening
+    sleep 2
     if systemctl is-active --quiet php-fpm; then
-        echo "✓ PHP-FPM configured and running"
+        # Check if PHP-FPM is listening on port 9000
+        if netstat -tuln 2>/dev/null | grep -q ":9000 " || ss -tuln 2>/dev/null | grep -q ":9000 "; then
+            echo "✓ PHP-FPM configured and running (listening on 127.0.0.1:9000)"
+        else
+            echo "⚠ PHP-FPM is running but not listening on port 9000, checking config..."
+            systemctl status php-fpm --no-pager | head -10
+            # Try restart
+            systemctl restart php-fpm
+            sleep 2
+            if netstat -tuln 2>/dev/null | grep -q ":9000 " || ss -tuln 2>/dev/null | grep -q ":9000 "; then
+                echo "✓ PHP-FPM now listening on port 9000"
+            else
+                echo "⚠ PHP-FPM may need manual configuration"
+            fi
+        fi
     else
         echo "Retrying PHP-FPM start..."
         systemctl start php-fpm
@@ -1246,6 +1276,41 @@ if command -v curl &> /dev/null; then
     
     if echo "$HTTP_CODE" | grep -q "200\|301\|302"; then
         echo "✓ Dashboard is responding (HTTP $HTTP_CODE)"
+    elif [ "$HTTP_CODE" = "502" ]; then
+        echo "⚠ Detected 502 Bad Gateway, auto-fixing PHP-FPM connection..."
+        
+        # Ensure PHP-FPM is using TCP
+        if ! grep -q "^listen = 127.0.0.1:9000" /etc/php-fpm.d/www.conf; then
+            echo "Fixing PHP-FPM to use TCP..."
+            sed -i '/^listen = /c\listen = 127.0.0.1:9000' /etc/php-fpm.d/www.conf
+            systemctl restart php-fpm
+            sleep 2
+        fi
+        
+        # Verify PHP-FPM is listening
+        if ! (netstat -tuln 2>/dev/null | grep -q ":9000 " || ss -tuln 2>/dev/null | grep -q ":9000 "); then
+            echo "PHP-FPM not listening, restarting..."
+            systemctl restart php-fpm
+            sleep 3
+        fi
+        
+        # Test PHP execution
+        if [ -f "$DASHBOARD_DIR/backend/public/index.php" ]; then
+            echo "Testing PHP execution..."
+            php -l "$DASHBOARD_DIR/backend/public/index.php" 2>&1 | head -3
+        fi
+        
+        # Restart Nginx to reconnect
+        systemctl restart nginx
+        sleep 2
+        
+        # Retest
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$DASHBOARD_PORT 2>/dev/null || echo "000")
+        if echo "$HTTP_CODE" | grep -q "200\|301\|302"; then
+            echo "✓ Fixed! Dashboard is responding (HTTP $HTTP_CODE)"
+        else
+            echo "⚠ Still getting HTTP $HTTP_CODE, but PHP-FPM should be configured correctly"
+        fi
     elif [ "$HTTP_CODE" = "403" ]; then
         echo "⚠ Detected 403 error, auto-fixing permissions and SELinux..."
         
