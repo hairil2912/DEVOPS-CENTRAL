@@ -11,7 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
-VERSION="1.0.2"
+VERSION="1.0.3"
 
 echo -e "${GREEN}Installing DevOps Dashboard v${VERSION}...${NC}"
 
@@ -229,17 +229,30 @@ echo "Copying dashboard files..."
 cp -r $SOURCE_DIR/* $DASHBOARD_DIR/
 
 # Ensure frontend UI is copied correctly (force copy if exists in source)
-# Note: SOURCE_DIR is already "dashboard" or "temp-repo/dashboard", so path is frontend/dist/index.html
+# Note: SOURCE_DIR is already "dashboard" or "temp-repo/dashboard"
+# Check both dist/ and public/ locations
+FRONTEND_SOURCE=""
+FRONTEND_SIZE=0
+
+# Try dist/ first (preferred location)
 if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
+    FRONTEND_SOURCE="$SOURCE_DIR/frontend/dist/index.html"
+    FRONTEND_SIZE=$(stat -f%z "$FRONTEND_SOURCE" 2>/dev/null || stat -c%s "$FRONTEND_SOURCE" 2>/dev/null || echo "0")
+    echo "Found frontend file at: frontend/dist/index.html (size: $FRONTEND_SIZE bytes)"
+# Try public/ as fallback
+elif [ -f "$SOURCE_DIR/frontend/public/index.html" ]; then
+    FRONTEND_SOURCE="$SOURCE_DIR/frontend/public/index.html"
+    FRONTEND_SIZE=$(stat -f%z "$FRONTEND_SOURCE" 2>/dev/null || stat -c%s "$FRONTEND_SOURCE" 2>/dev/null || echo "0")
+    echo "Found frontend file at: frontend/public/index.html (size: $FRONTEND_SIZE bytes)"
+    echo "  Note: File is in public/ instead of dist/, will copy to dist/"
+fi
+
+if [ -n "$FRONTEND_SOURCE" ] && [ -f "$FRONTEND_SOURCE" ]; then
     echo "Ensuring frontend UI is copied..."
     mkdir -p $DASHBOARD_DIR/frontend/dist
     
-    # Check source file size first
-    SOURCE_SIZE=$(stat -f%z "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$SOURCE_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
-    echo "  Source file size from GitHub: $SOURCE_SIZE bytes"
-    
     # Copy file
-    cp -f "$SOURCE_DIR/frontend/dist/index.html" "$DASHBOARD_DIR/frontend/dist/index.html"
+    cp -f "$FRONTEND_SOURCE" "$DASHBOARD_DIR/frontend/dist/index.html"
     
     # Verify file size (should be ~39KB for full UI)
     FILE_SIZE=$(stat -f%z "$DASHBOARD_DIR/frontend/dist/index.html" 2>/dev/null || stat -c%s "$DASHBOARD_DIR/frontend/dist/index.html" 2>/dev/null || echo "0")
@@ -247,10 +260,10 @@ if [ -f "$SOURCE_DIR/frontend/dist/index.html" ]; then
         echo "✓ Frontend UI copied from repository (full UI, size: $FILE_SIZE bytes)"
     else
         echo "⚠ Frontend file seems to be placeholder (size: $FILE_SIZE bytes)"
-        echo "  Source file from GitHub was also small ($SOURCE_SIZE bytes)"
+        echo "  Source file from GitHub was also small ($FRONTEND_SIZE bytes)"
         echo "  This means the file in GitHub repository is still the old placeholder (2.4KB)"
         echo ""
-        echo "  SOLUTION: Push the full UI file (39KB) to GitHub repository first:"
+        echo "  SOLUTION: Push the full UI file (39KB) to GitHub repository:"
         echo "    git add dashboard/frontend/dist/index.html"
         echo "    git commit -m 'Add complete dashboard UI'"
         echo "    git push origin master"
