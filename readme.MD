@@ -1,6 +1,6 @@
 di client di harapkan ada
 
-MariaDB 10.5.2
+MariaDB 10.5.5
 
 PHP 7.3.3
 
@@ -63,12 +63,12 @@ systemctl enable php-fpm
 systemctl start php-fpm
 
 # =========================
-# INSTALL MARIADB 10.5.2
+# INSTALL MARIADB 10.5.5
 # =========================
 cat > /etc/yum.repos.d/MariaDB.repo <<'EOF'
 [mariadb]
 name = MariaDB
-baseurl = https://archive.mariadb.org/mariadb-10.5.2/yum/centos8-amd64
+baseurl = https://archive.mariadb.org/mariadb-10.5.5/yum/centos8-amd64
 gpgkey=https://archive.mariadb.org/PublicKey
 gpgcheck=1
 EOF

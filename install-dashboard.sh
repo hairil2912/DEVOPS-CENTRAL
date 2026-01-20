@@ -105,21 +105,21 @@ fi
 
 # Check MariaDB/MySQL
 if ! command -v mysql &> /dev/null && ! command -v mariadb &> /dev/null; then
-    echo "MariaDB/MySQL not found. Installing MariaDB 10.5.2..."
+    echo "MariaDB/MySQL not found. Installing MariaDB 10.5.5..."
     if command -v dnf &> /dev/null; then
-        # Install MariaDB 10.5.2 from official repository
-        echo "Setting up MariaDB 10.5.2 repository..."
+        # Install MariaDB 10.5.5 from official repository
+        echo "Setting up MariaDB 10.5.5 repository..."
         cat > /etc/yum.repos.d/MariaDB.repo <<'EOF'
 [mariadb]
 name = MariaDB
-baseurl = https://archive.mariadb.org/mariadb-10.5.2/yum/centos8-amd64
+baseurl = https://archive.mariadb.org/mariadb-10.5.5/yum/centos8-amd64
 gpgkey=https://archive.mariadb.org/PublicKey
 gpgcheck=1
 EOF
         # Try install with uppercase (official repo)
-        echo "Installing MariaDB 10.5.2..."
+        echo "Installing MariaDB 10.5.5..."
         if dnf install -y MariaDB-server MariaDB-client 2>/dev/null; then
-            echo "MariaDB 10.5.2 installed from official repository"
+            echo "MariaDB 10.5.5 installed from official repository"
         else
             # Fallback to default repo if official repo fails
             echo -e "${YELLOW}Official MariaDB repo failed. Trying default repository...${NC}"

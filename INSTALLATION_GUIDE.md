@@ -5,7 +5,7 @@
 ### Untuk Agent (Client Server)
 - AlmaLinux 8 / Ubuntu 20.04+ / Debian 11+
 - Python 3.8+
-- MariaDB 10.5.2+
+- MariaDB 10.5.5+
 - Nginx 1.22.x
 - PHP 7.3.3+
 - User dengan sudo access
@@ -14,7 +14,7 @@
 - AlmaLinux 8 / Ubuntu 20.04+ / Debian 11+
 - Nginx 1.22.x
 - PHP 7.3.3+ dengan PHP-FPM
-- MariaDB 10.5.2+ / MySQL 8.0+
+- MariaDB 10.5.5+ / MySQL 8.0+
 - Composer (untuk PHP dependencies)
 - Node.js 16+ & npm (untuk frontend)
 - SSL Certificate (Let's Encrypt recommended)
