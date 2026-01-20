@@ -1,0 +1,43 @@
+# DevOps Agent Configuration Template
+# Copy this file to config.yaml and fill in the values
+
+agent:
+  id: ""                                    # UUID - akan di-generate saat instalasi
+  name: ""                                  # Nama server (contoh: web-server-01)
+  version: "1.0.0"
+
+dashboard:
+  url: "https://dashboard.example.com"     # URL dashboard central
+  api_version: "v1"
+  token: ""                                 # Token akan diisi saat instalasi
+  token_file: "/opt/devops-agent/etc/token" # File encrypted token
+  verify_ssl: true
+  timeout: 30                               # seconds
+
+heartbeat:
+  interval: 30                              # seconds
+  timeout: 5                                # seconds
+  retry_count: 3
+  retry_delay: 10                           # seconds
+
+polling:
+  interval: 10                              # seconds (normal)
+  fast_interval: 2                          # seconds (setelah command dikirim)
+  fast_duration: 60                         # seconds
+  timeout: 5                                # seconds
+
+logging:
+  level: "INFO"                             # DEBUG, INFO, WARNING, ERROR
+  file: "/opt/devops-agent/var/log/agent.log"
+  max_size: "10MB"
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+database:
+  queue_file: "/opt/devops-agent/var/lib/command_queue.db"
+  backup_retention: 7                       # days
+
+security:
+  user: "devops-agent"                      # User untuk menjalankan agent
+  group: "devops-agent"
+  token_encryption: true

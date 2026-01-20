@@ -1,0 +1,92 @@
+# Command Whitelist Definition
+# Daftar command yang diizinkan untuk dieksekusi oleh agent
+
+commands:
+  # Service Management
+  service_restart:
+    description: "Restart service (nginx, php-fpm, mariadb)"
+    allowed_services:
+      - nginx
+      - php-fpm
+      - mariadb
+    command: "systemctl restart {service}"
+    timeout: 30
+    requires_sudo: true
+    
+  service_reload:
+    description: "Reload service configuration"
+    allowed_services:
+      - nginx
+      - php-fpm
+    command: "systemctl reload {service}"
+    timeout: 10
+    requires_sudo: true
+    
+  service_status:
+    description: "Check service status"
+    allowed_services:
+      - nginx
+      - php-fpm
+      - mariadb
+    command: "systemctl status {service}"
+    timeout: 5
+    requires_sudo: false
+    
+  # Database Management
+  db_create:
+    description: "Create new database"
+    command: "mysql -u root --socket=/var/lib/mysql/mysql.sock -e 'CREATE DATABASE IF NOT EXISTS {db_name};'"
+    timeout: 10
+    param_validation: "^[a-zA-Z0-9_]{1,64}$"
+    requires_sudo: false
+    
+  db_drop:
+    description: "Drop database"
+    command: "mysql -u root --socket=/var/lib/mysql/mysql.sock -e 'DROP DATABASE IF EXISTS {db_name};'"
+    timeout: 10
+    param_validation: "^[a-zA-Z0-9_]{1,64}$"
+    requires_sudo: false
+    
+  db_user_create:
+    description: "Create database user"
+    command: "mysql -u root --socket=/var/lib/mysql/mysql.sock -e \"CREATE USER IF NOT EXISTS '{username}'@'localhost' IDENTIFIED BY '{password}';\""
+    timeout: 10
+    param_validation:
+      username: "^[a-zA-Z0-9_]{1,32}$"
+      password: "^.{8,}$"
+    requires_sudo: false
+    
+  db_user_drop:
+    description: "Drop database user"
+    command: "mysql -u root --socket=/var/lib/mysql/mysql.sock -e \"DROP USER IF EXISTS '{username}'@'localhost';\""
+    timeout: 10
+    param_validation:
+      username: "^[a-zA-Z0-9_]{1,32}$"
+    requires_sudo: false
+    
+  db_grant_privilege:
+    description: "Grant privilege to user"
+    command: "mysql -u root --socket=/var/lib/mysql/mysql.sock -e \"GRANT {privileges} ON {db_name}.* TO '{username}'@'localhost';\""
+    timeout: 10
+    allowed_privileges:
+      - SELECT
+      - INSERT
+      - UPDATE
+      - DELETE
+      - CREATE
+      - DROP
+      - INDEX
+      - ALTER
+    requires_sudo: false
+    
+  db_backup:
+    description: "Backup database"
+    command: "mysqldump -u root --socket=/var/lib/mysql/mysql.sock {db_name} > {backup_file}"
+    timeout: 300
+    requires_sudo: false
+    
+  db_restore:
+    description: "Restore database from backup"
+    command: "mysql -u root --socket=/var/lib/mysql/mysql.sock {db_name} < {backup_file}"
+    timeout: 600
+    requires_sudo: false

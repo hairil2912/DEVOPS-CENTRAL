@@ -1,0 +1,51 @@
+# DevOps Central - Git Ignore
+
+# Agent
+agent/etc/config.yaml
+agent/etc/token
+agent/var/**/*
+!agent/var/.gitkeep
+agent/__pycache__/
+agent/*.pyc
+agent/.venv/
+agent/venv/
+
+# Dashboard
+dashboard/backend/.env
+dashboard/backend/storage/**/*
+!dashboard/backend/storage/.gitkeep
+dashboard/backend/vendor/
+dashboard/frontend/node_modules/
+dashboard/frontend/dist/
+dashboard/frontend/.env.local
+dashboard/frontend/.env.production
+
+# Database
+dashboard/database/backups/*.sql
+dashboard/database/backups/*.sql.gz
+
+# Logs
+*.log
+logs/
+
+# SSL Certificates
+*.crt
+*.key
+*.pem
+nginx/ssl/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
