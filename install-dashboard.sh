@@ -408,13 +408,61 @@ fi
 
 echo "✓ Server IP detected: $SERVER_IP"
 
-# Setup .env with IP
+# Generate random port SEBELUM setup .env
+echo ""
+echo "=== Generating Random Port ==="
+DASHBOARD_PORT=""
+MAX_ATTEMPTS=10
+ATTEMPT=0
+
+# Function to check if port is available
+check_port() {
+    local port=$1
+    if command -v netstat &> /dev/null; then
+        netstat -tuln | grep -q ":$port " && return 1
+    elif command -v ss &> /dev/null; then
+        ss -tuln | grep -q ":$port " && return 1
+    elif command -v lsof &> /dev/null; then
+        lsof -i :$port &>/dev/null && return 1
+    fi
+    return 0
+}
+
+# Generate random port yang belum digunakan (10000-65535)
+while [ -z "$DASHBOARD_PORT" ] && [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    # Generate port antara 10000-65535
+    RANDOM_PORT=$((RANDOM % 55536 + 10000))
+    
+    if check_port $RANDOM_PORT; then
+        DASHBOARD_PORT=$RANDOM_PORT
+        echo "✓ Random port generated: $DASHBOARD_PORT"
+    else
+        ATTEMPT=$((ATTEMPT + 1))
+        echo "Port $RANDOM_PORT is in use, trying another..."
+    fi
+done
+
+# Fallback jika semua port terpakai (sangat jarang)
+if [ -z "$DASHBOARD_PORT" ]; then
+    echo -e "${YELLOW}Warning: Could not find available port. Using default 8888${NC}"
+    DASHBOARD_PORT=8888
+    if ! check_port $DASHBOARD_PORT; then
+        echo -e "${RED}Error: Port 8888 also in use. Please free a port manually.${NC}"
+        exit 1
+    fi
+fi
+
+# Save port to file untuk reference
+echo "$DASHBOARD_PORT" > /var/www/devops-dashboard/.dashboard_port 2>/dev/null || true
+chmod 600 /var/www/devops-dashboard/.dashboard_port 2>/dev/null || true
+
+# Setup .env with IP and Port
 if [ -f "$DASHBOARD_DIR/backend/env.example" ]; then
     echo "Setting up .env file..."
     cp $DASHBOARD_DIR/backend/env.example $DASHBOARD_DIR/backend/.env
     
-    # Update .env file with IP and database info
-    sed -i "s|APP_URL=.*|APP_URL=http://$SERVER_IP|" $DASHBOARD_DIR/backend/.env
+    # Update .env file with IP, port, and database info
+    sed -i "s|APP_URL=.*|APP_URL=http://$SERVER_IP:$DASHBOARD_PORT|" $DASHBOARD_DIR/backend/.env
     sed -i "s|DB_DATABASE=.*|DB_DATABASE=$db_name|" $DASHBOARD_DIR/backend/.env
     sed -i "s|DB_USERNAME=.*|DB_USERNAME=$db_user|" $DASHBOARD_DIR/backend/.env
     
@@ -425,14 +473,14 @@ if [ -f "$DASHBOARD_DIR/backend/env.example" ]; then
         echo "DB_PASSWORD=$db_pass" >> $DASHBOARD_DIR/backend/.env
     fi
     
-    echo "✓ .env file configured with IP: http://$SERVER_IP"
+    echo "✓ .env file configured with IP and port: http://$SERVER_IP:$DASHBOARD_PORT"
 else
     echo "Creating .env file..."
     cat > $DASHBOARD_DIR/backend/.env <<EOF
 APP_NAME=DevOps Central Dashboard
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=http://$SERVER_IP
+APP_URL=http://$SERVER_IP:$DASHBOARD_PORT
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -444,9 +492,10 @@ EOF
     echo "✓ .env file created"
 fi
 
-# Auto-setup Nginx dengan IP
+# Auto-setup Nginx dengan IP dan Random Port
 echo ""
 echo "=== Setting up Nginx (Auto) ==="
+echo "Using port: $DASHBOARD_PORT"
 
 # Check PHP-FPM socket
 PHP_FPM_SOCKET="/run/php-fpm/www.sock"
@@ -454,15 +503,16 @@ if [ ! -S "$PHP_FPM_SOCKET" ]; then
     PHP_FPM_SOCKET="127.0.0.1:9000"
 fi
 
-# Create Nginx config dengan IP
+# Create Nginx config dengan IP dan Random Port
 cat > /etc/nginx/conf.d/devops-dashboard.conf <<EOF
-# DevOps Dashboard - Auto-configured with IP
+# DevOps Dashboard - Auto-configured with IP and Random Port
+# Port: $DASHBOARD_PORT (for security)
 upstream php-fpm {
     server $PHP_FPM_SOCKET;
 }
 
 server {
-    listen 80;
+    listen $DASHBOARD_PORT;
     server_name $SERVER_IP _;
 
     # Root directory
@@ -508,7 +558,7 @@ server {
 }
 EOF
 
-echo "✓ Nginx config created"
+echo "✓ Nginx config created with port $DASHBOARD_PORT"
 
 # Test and reload Nginx
 if nginx -t 2>/dev/null; then
@@ -541,42 +591,36 @@ chown -R $NGINX_USER:$NGINX_USER $DASHBOARD_DIR
 chmod -R 755 $DASHBOARD_DIR
 chmod -R 775 $DASHBOARD_DIR/backend/storage
 
-# Firewall Configuration (auto-setup untuk semua jenis firewall)
+# Firewall Configuration (auto-setup untuk port random)
 echo ""
 echo "=== Configuring Firewall ==="
 
 # Method 1: firewalld (RHEL/CentOS/AlmaLinux)
 if command -v firewall-cmd &> /dev/null; then
     if systemctl is-active --quiet firewalld 2>/dev/null; then
-        echo "Configuring firewalld..."
-        firewall-cmd --permanent --add-service=http 2>/dev/null
-        firewall-cmd --permanent --add-service=https 2>/dev/null
+        echo "Configuring firewalld for port $DASHBOARD_PORT..."
+        firewall-cmd --permanent --add-port=$DASHBOARD_PORT/tcp 2>/dev/null
         firewall-cmd --reload 2>/dev/null
-        echo "✓ firewalld configured (ports 80, 443)"
+        echo "✓ firewalld configured (port $DASHBOARD_PORT)"
     else
         echo "firewalld installed but not active, skipping..."
     fi
 # Method 2: ufw (Ubuntu/Debian)
 elif command -v ufw &> /dev/null; then
     if ufw status | grep -q "Status: active"; then
-        echo "Configuring ufw..."
-        ufw allow 80/tcp 2>/dev/null
-        ufw allow 443/tcp 2>/dev/null
-        echo "✓ ufw configured (ports 80, 443)"
+        echo "Configuring ufw for port $DASHBOARD_PORT..."
+        ufw allow $DASHBOARD_PORT/tcp 2>/dev/null
+        echo "✓ ufw configured (port $DASHBOARD_PORT)"
     else
         echo "ufw installed but not active, skipping..."
     fi
 # Method 3: iptables direct (fallback)
 elif command -v iptables &> /dev/null; then
-    echo "Configuring iptables..."
+    echo "Configuring iptables for port $DASHBOARD_PORT..."
     # Check if rule already exists
-    if ! iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
-        iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null
-        echo "✓ iptables rule added (port 80)"
-    fi
-    if ! iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null; then
-        iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null
-        echo "✓ iptables rule added (port 443)"
+    if ! iptables -C INPUT -p tcp --dport $DASHBOARD_PORT -j ACCEPT 2>/dev/null; then
+        iptables -I INPUT -p tcp --dport $DASHBOARD_PORT -j ACCEPT 2>/dev/null
+        echo "✓ iptables rule added (port $DASHBOARD_PORT)"
     fi
     
     # Save iptables rules (try different methods)
@@ -591,7 +635,7 @@ elif command -v iptables &> /dev/null; then
         fi
     fi
 else
-    echo -e "${YELLOW}No firewall manager detected. Ports may need manual configuration.${NC}"
+    echo -e "${YELLOW}No firewall manager detected. Port $DASHBOARD_PORT may need manual configuration.${NC}"
 fi
 
 # SELinux (jika aktif, allow HTTP)
@@ -614,7 +658,11 @@ echo -e "${GREEN}Dashboard Installed Successfully!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "🌐 Access Dashboard:"
-echo -e "   ${GREEN}http://$SERVER_IP${NC}"
+echo -e "   ${GREEN}http://$SERVER_IP:$DASHBOARD_PORT${NC}"
+echo ""
+echo "🔒 Security:"
+echo "   Random port generated: $DASHBOARD_PORT (for security)"
+echo "   Port saved to: /var/www/devops-dashboard/.dashboard_port"
 echo ""
 echo "📊 Database Info:"
 echo "   Database: $db_name"
@@ -623,8 +671,12 @@ echo "   Password: $db_pass"
 echo ""
 echo "🔗 Agent Connection:"
 echo "   Use this URL when installing agent:"
-echo -e "   ${GREEN}http://$SERVER_IP${NC}"
+echo -e "   ${GREEN}http://$SERVER_IP:$DASHBOARD_PORT${NC}"
 echo ""
-echo -e "${YELLOW}⚠️  IMPORTANT: Save database password!${NC}"
+echo -e "${YELLOW}⚠️  IMPORTANT:${NC}"
+echo "   - Save database password!"
+echo "   - Dashboard port: $DASHBOARD_PORT (random for security)"
+echo "   - Access URL: http://$SERVER_IP:$DASHBOARD_PORT"
 echo ""
-echo "✅ Dashboard is ready! You can now connect agents to: http://$SERVER_IP"
+echo "✅ Dashboard is ready! You can now connect agents to:"
+echo -e "   ${GREEN}http://$SERVER_IP:$DASHBOARD_PORT${NC}"
