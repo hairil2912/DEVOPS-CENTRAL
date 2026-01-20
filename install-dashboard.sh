@@ -524,11 +524,19 @@ echo "Using port: $DASHBOARD_PORT"
 # Use TCP connection (more reliable, no socket permission issues)
 PHP_FPM_UPSTREAM="server 127.0.0.1:9000;"
 
+# Check if php-fpm upstream already exists in other config files
+if grep -r "upstream php-fpm" /etc/nginx/conf.d/ 2>/dev/null | grep -v "devops-dashboard.conf"; then
+    echo "php-fpm upstream already exists, using different name..."
+    PHP_FPM_UPSTREAM_NAME="devops-php-fpm"
+else
+    PHP_FPM_UPSTREAM_NAME="php-fpm"
+fi
+
 # Create Nginx config dengan IP dan Random Port
 cat > /etc/nginx/conf.d/devops-dashboard.conf <<EOF
 # DevOps Dashboard - Auto-configured with IP and Random Port
 # Port: $DASHBOARD_PORT (for security)
-upstream php-fpm {
+upstream $PHP_FPM_UPSTREAM_NAME {
     $PHP_FPM_UPSTREAM
 }
 
@@ -548,7 +556,7 @@ server {
     location /api {
         try_files \$uri \$uri/ /backend/public/index.php?\$query_string;
         
-        fastcgi_pass php-fpm;
+        fastcgi_pass $PHP_FPM_UPSTREAM_NAME;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME /var/www/devops-dashboard/backend/public/index.php;
         include fastcgi_params;
