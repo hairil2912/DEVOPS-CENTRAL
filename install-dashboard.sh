@@ -369,15 +369,262 @@ EOF
     echo -e "${YELLOW}Password saved to: $DASHBOARD_DIR/database_setup_info.txt${NC}"
 fi
 
-# Setup .env
+# Auto-detect server IP (non-loopback, local network IP)
+echo "Detecting server IP address (local network)..."
+SERVER_IP=""
+
+# Method 1: Get IP from default route (most reliable for local network)
+SERVER_IP=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/ {print $7}' | head -n1)
+
+# Method 2: Get IP from hostname -I (exclude loopback)
+if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "127.0.0.1" ]; then
+    SERVER_IP=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i !~ /^127\./ && $i !~ /^::/) {print $i; exit}}')
+fi
+
+# Method 3: Get IP from ip addr (exclude loopback and IPv6)
+if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "127.0.0.1" ]; then
+    SERVER_IP=$(ip -4 addr show 2>/dev/null | grep -E "inet [0-9]" | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
+fi
+
+# Method 4: Get IP from ifconfig (if available)
+if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "127.0.0.1" ]; then
+    if command -v ifconfig &> /dev/null; then
+        SERVER_IP=$(ifconfig 2>/dev/null | grep -E "inet [0-9]" | grep -v "127.0.0.1" | awk '{print $2}' | head -n1)
+    fi
+fi
+
+# Validate IP (must be valid IPv4 and not loopback)
+if [ -z "$SERVER_IP" ] || [ "$SERVER_IP" = "127.0.0.1" ] || ! echo "$SERVER_IP" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+    echo -e "${YELLOW}Warning: Could not detect valid local IP${NC}"
+    echo "Available IPs:"
+    hostname -I 2>/dev/null || ip addr show | grep "inet " | grep -v "127.0.0.1"
+    echo ""
+    read -p "Enter server IP address manually: " SERVER_IP
+    if [ -z "$SERVER_IP" ]; then
+        SERVER_IP="127.0.0.1"
+        echo -e "${YELLOW}Using 127.0.0.1 (localhost only)${NC}"
+    fi
+fi
+
+echo "✓ Server IP detected: $SERVER_IP"
+
+# Setup .env with IP
 if [ -f "$DASHBOARD_DIR/backend/env.example" ]; then
+    echo "Setting up .env file..."
     cp $DASHBOARD_DIR/backend/env.example $DASHBOARD_DIR/backend/.env
-    sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$db_pass/" $DASHBOARD_DIR/backend/.env
+    
+    # Update .env file with IP and database info
+    sed -i "s|APP_URL=.*|APP_URL=http://$SERVER_IP|" $DASHBOARD_DIR/backend/.env
+    sed -i "s|DB_DATABASE=.*|DB_DATABASE=$db_name|" $DASHBOARD_DIR/backend/.env
+    sed -i "s|DB_USERNAME=.*|DB_USERNAME=$db_user|" $DASHBOARD_DIR/backend/.env
+    
+    # Update password (use different delimiter)
+    if grep -q "DB_PASSWORD=" $DASHBOARD_DIR/backend/.env; then
+        sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$db_pass|" $DASHBOARD_DIR/backend/.env
+    else
+        echo "DB_PASSWORD=$db_pass" >> $DASHBOARD_DIR/backend/.env
+    fi
+    
+    echo "✓ .env file configured with IP: http://$SERVER_IP"
+else
+    echo "Creating .env file..."
+    cat > $DASHBOARD_DIR/backend/.env <<EOF
+APP_NAME=DevOps Central Dashboard
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=http://$SERVER_IP
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=$db_name
+DB_USERNAME=$db_user
+DB_PASSWORD=$db_pass
+EOF
+    echo "✓ .env file created"
+fi
+
+# Auto-setup Nginx dengan IP
+echo ""
+echo "=== Setting up Nginx (Auto) ==="
+
+# Check PHP-FPM socket
+PHP_FPM_SOCKET="/run/php-fpm/www.sock"
+if [ ! -S "$PHP_FPM_SOCKET" ]; then
+    PHP_FPM_SOCKET="127.0.0.1:9000"
+fi
+
+# Create Nginx config dengan IP
+cat > /etc/nginx/conf.d/devops-dashboard.conf <<EOF
+# DevOps Dashboard - Auto-configured with IP
+upstream php-fpm {
+    server $PHP_FPM_SOCKET;
+}
+
+server {
+    listen 80;
+    server_name $SERVER_IP _;
+
+    # Root directory
+    root /var/www/devops-dashboard/frontend/dist;
+    index index.html index.php;
+
+    # Logging
+    access_log /var/log/nginx/devops-dashboard-access.log;
+    error_log /var/log/nginx/devops-dashboard-error.log;
+
+    # API Backend
+    location /api {
+        try_files \$uri \$uri/ /backend/public/index.php?\$query_string;
+        
+        fastcgi_pass php-fpm;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME /var/www/devops-dashboard/backend/public/index.php;
+        include fastcgi_params;
+        
+        # CORS headers
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+    }
+
+    # Frontend Static Files
+    location / {
+        try_files \$uri \$uri/ /index.html;
+        
+        # Cache static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # Deny access to hidden files
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}
+EOF
+
+echo "✓ Nginx config created"
+
+# Test and reload Nginx
+if nginx -t 2>/dev/null; then
+    systemctl reload nginx
+    echo "✓ Nginx reloaded"
+else
+    echo -e "${YELLOW}Warning: Nginx config test failed. Please check manually.${NC}"
+fi
+
+# Setup PHP-FPM untuk Nginx user
+if [ -f "/etc/php-fpm.d/www.conf" ]; then
+    echo "Configuring PHP-FPM..."
+    sed -i 's/user = apache/user = nginx/' /etc/php-fpm.d/www.conf 2>/dev/null || true
+    sed -i 's/group = apache/group = nginx/' /etc/php-fpm.d/www.conf 2>/dev/null || true
+    
+    # Setup socket
+    if grep -q "listen = 127.0.0.1:9000" /etc/php-fpm.d/www.conf; then
+        sed -i 's|listen = 127.0.0.1:9000|listen = /run/php-fpm/www.sock|' /etc/php-fpm.d/www.conf
+        sed -i 's|;listen.owner = nobody|listen.owner = nginx|' /etc/php-fpm.d/www.conf
+        sed -i 's|;listen.group = nobody|listen.group = nginx|' /etc/php-fpm.d/www.conf
+        sed -i 's|;listen.mode = 0660|listen.mode = 0660|' /etc/php-fpm.d/www.conf
+    fi
+    
+    systemctl restart php-fpm
+    echo "✓ PHP-FPM configured and restarted"
 fi
 
 # Permissions
 chown -R $NGINX_USER:$NGINX_USER $DASHBOARD_DIR
+chmod -R 755 $DASHBOARD_DIR
 chmod -R 775 $DASHBOARD_DIR/backend/storage
 
-echo -e "${GREEN}Dashboard installed!${NC}"
-echo "Next: Setup Nginx and SSL"
+# Firewall Configuration (auto-setup untuk semua jenis firewall)
+echo ""
+echo "=== Configuring Firewall ==="
+
+# Method 1: firewalld (RHEL/CentOS/AlmaLinux)
+if command -v firewall-cmd &> /dev/null; then
+    if systemctl is-active --quiet firewalld 2>/dev/null; then
+        echo "Configuring firewalld..."
+        firewall-cmd --permanent --add-service=http 2>/dev/null
+        firewall-cmd --permanent --add-service=https 2>/dev/null
+        firewall-cmd --reload 2>/dev/null
+        echo "✓ firewalld configured (ports 80, 443)"
+    else
+        echo "firewalld installed but not active, skipping..."
+    fi
+# Method 2: ufw (Ubuntu/Debian)
+elif command -v ufw &> /dev/null; then
+    if ufw status | grep -q "Status: active"; then
+        echo "Configuring ufw..."
+        ufw allow 80/tcp 2>/dev/null
+        ufw allow 443/tcp 2>/dev/null
+        echo "✓ ufw configured (ports 80, 443)"
+    else
+        echo "ufw installed but not active, skipping..."
+    fi
+# Method 3: iptables direct (fallback)
+elif command -v iptables &> /dev/null; then
+    echo "Configuring iptables..."
+    # Check if rule already exists
+    if ! iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
+        iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null
+        echo "✓ iptables rule added (port 80)"
+    fi
+    if ! iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null; then
+        iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null
+        echo "✓ iptables rule added (port 443)"
+    fi
+    
+    # Save iptables rules (try different methods)
+    if command -v iptables-save &> /dev/null; then
+        # RHEL/CentOS/AlmaLinux
+        if [ -f /etc/sysconfig/iptables ]; then
+            iptables-save > /etc/sysconfig/iptables 2>/dev/null || true
+        fi
+        # Ubuntu/Debian
+        if command -v netfilter-persistent &> /dev/null; then
+            netfilter-persistent save 2>/dev/null || true
+        fi
+    fi
+else
+    echo -e "${YELLOW}No firewall manager detected. Ports may need manual configuration.${NC}"
+fi
+
+# SELinux (jika aktif, allow HTTP)
+if command -v getenforce &> /dev/null; then
+    if [ "$(getenforce)" = "Enforcing" ]; then
+        echo "Configuring SELinux..."
+        if command -v setsebool &> /dev/null; then
+            setsebool -P httpd_can_network_connect 1 2>/dev/null || true
+            setsebool -P httpd_can_network_relay 1 2>/dev/null || true
+        fi
+        echo "✓ SELinux configured"
+    fi
+fi
+
+echo "✓ Firewall configuration complete"
+
+echo ""
+echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}Dashboard Installed Successfully!${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+echo ""
+echo "🌐 Access Dashboard:"
+echo -e "   ${GREEN}http://$SERVER_IP${NC}"
+echo ""
+echo "📊 Database Info:"
+echo "   Database: $db_name"
+echo "   User: $db_user"
+echo "   Password: $db_pass"
+echo ""
+echo "🔗 Agent Connection:"
+echo "   Use this URL when installing agent:"
+echo -e "   ${GREEN}http://$SERVER_IP${NC}"
+echo ""
+echo -e "${YELLOW}⚠️  IMPORTANT: Save database password!${NC}"
+echo ""
+echo "✅ Dashboard is ready! You can now connect agents to: http://$SERVER_IP"
