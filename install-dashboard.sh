@@ -783,45 +783,84 @@ if nginx -t 2>/dev/null; then
 else
     echo -e "${YELLOW}Nginx config test failed. Auto-fixing...${NC}"
     # Show error
-    nginx -t 2>&1 | head -5
+    NGINX_ERROR=$(nginx -t 2>&1)
+    echo "$NGINX_ERROR" | head -10
     
-    # Fix 1: Check if socket format is wrong (missing unix: prefix)
-    if grep -q 'server "/run/php-fpm/www.sock"' /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null || \
-       grep -q 'server /run/php-fpm/www.sock' /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null; then
-        echo "Fixing PHP-FPM socket format (adding unix: prefix)..."
-        sed -i 's|server "/run/php-fpm/www.sock"|server unix:/run/php-fpm/www.sock;|' /etc/nginx/conf.d/devops-dashboard.conf
-        sed -i 's|server /run/php-fpm/www.sock|server unix:/run/php-fpm/www.sock;|' /etc/nginx/conf.d/devops-dashboard.conf
+    # Fix 1: Check for duplicate upstream
+    if echo "$NGINX_ERROR" | grep -q "duplicate upstream"; then
+        echo "Fixing duplicate upstream issue..."
+        # Use unique upstream name
+        sed -i "s/upstream php-fpm/upstream devops-php-fpm/g" /etc/nginx/conf.d/devops-dashboard.conf
+        sed -i "s/fastcgi_pass php-fpm/fastcgi_pass devops-php-fpm/g" /etc/nginx/conf.d/devops-dashboard.conf
     fi
     
-    # Fix 2: Check if socket doesn't exist, use TCP instead
+    # Fix 2: Check if socket format is wrong
+    if grep -q 'server "/run/php-fpm/www.sock"' /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null || \
+       grep -q 'server /run/php-fpm/www.sock' /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null; then
+        echo "Fixing PHP-FPM socket format..."
+        sed -i 's|server "/run/php-fpm/www.sock"|server 127.0.0.1:9000;|' /etc/nginx/conf.d/devops-dashboard.conf
+        sed -i 's|server /run/php-fpm/www.sock|server 127.0.0.1:9000;|' /etc/nginx/conf.d/devops-dashboard.conf
+    fi
+    
+    # Fix 3: Force TCP if socket doesn't exist
     if [ ! -S "/run/php-fpm/www.sock" ]; then
-        echo "Socket doesn't exist, switching to TCP..."
+        echo "Using TCP connection (socket doesn't exist)..."
         sed -i 's|server unix:/run/php-fpm/www.sock;|server 127.0.0.1:9000;|' /etc/nginx/conf.d/devops-dashboard.conf
     fi
     
     # Test again
     if nginx -t 2>/dev/null; then
-        systemctl restart nginx
-        sleep 2
+        echo "✓ Config is now valid, starting Nginx..."
+        systemctl start nginx
+        sleep 3
         if systemctl is-active --quiet nginx; then
-            echo "✓ Nginx config fixed and restarted"
+            echo "✓ Nginx started successfully"
         else
-            echo "Retrying Nginx restart..."
-            systemctl restart nginx
-            sleep 2
+            echo "Checking Nginx error logs..."
+            tail -20 /var/log/nginx/error.log 2>/dev/null || journalctl -u nginx -n 20 --no-pager
         fi
     else
-        # Final fallback: Force TCP
-        echo "Force using TCP connection..."
-        sed -i 's|server unix:/run/php-fpm/www.sock;|server 127.0.0.1:9000;|' /etc/nginx/conf.d/devops-dashboard.conf
-        sed -i 's|server /run/php-fpm/www.sock;|server 127.0.0.1:9000;|' /etc/nginx/conf.d/devops-dashboard.conf
+        # Final fallback: Recreate config with TCP
+        echo "Recreating config with TCP connection..."
+        cat > /etc/nginx/conf.d/devops-dashboard.conf <<NGINXCONF
+# DevOps Dashboard - Auto-configured
+upstream devops-php-fpm {
+    server 127.0.0.1:9000;
+}
+
+server {
+    listen $DASHBOARD_PORT;
+    server_name $SERVER_IP _;
+    root /var/www/devops-dashboard/frontend/dist;
+    index index.html;
+    
+    access_log /var/log/nginx/devops-dashboard-access.log;
+    error_log /var/log/nginx/devops-dashboard-error.log;
+    
+    location /api {
+        try_files \$uri \$uri/ /backend/public/index.php\$is_args\$args;
+        fastcgi_pass devops-php-fpm;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME /var/www/devops-dashboard/backend/public/index.php;
+        fastcgi_param REQUEST_URI \$request_uri;
+        include fastcgi_params;
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+    }
+    
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+NGINXCONF
+        
         if nginx -t 2>/dev/null; then
-            systemctl restart nginx
-            sleep 2
-            echo "✓ Nginx config fixed (using TCP)"
+            systemctl start nginx
+            sleep 3
+            echo "✓ Nginx config recreated and started"
         else
-            echo -e "${RED}Nginx config still has errors. Showing config:${NC}"
-            cat /etc/nginx/conf.d/devops-dashboard.conf | head -10
+            echo -e "${RED}Nginx config still has errors. Manual fix required.${NC}"
             nginx -t
         fi
     fi
