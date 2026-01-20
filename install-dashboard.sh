@@ -725,26 +725,23 @@ server {
     access_log /var/log/nginx/devops-dashboard-access.log;
     error_log /var/log/nginx/devops-dashboard-error.log;
 
-    # API Backend
-    location /api {
-        # Direct all API requests to index.php
-        try_files \$uri \$uri/ /backend/public/index.php\$is_args\$args;
-        
+    # API Backend - Direct to PHP
+    location ~ ^/api {
+        # Direct all /api requests to PHP
         fastcgi_pass $PHP_FPM_UPSTREAM_NAME;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME /var/www/devops-dashboard/backend/public/index.php;
         fastcgi_param REQUEST_URI \$request_uri;
+        fastcgi_param REQUEST_METHOD \$request_method;
+        fastcgi_param QUERY_STRING \$query_string;
+        fastcgi_param CONTENT_TYPE \$content_type;
+        fastcgi_param CONTENT_LENGTH \$content_length;
         include fastcgi_params;
         
         # CORS headers
         add_header Access-Control-Allow-Origin * always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
-        
-        # Handle OPTIONS preflight
-        if (\$request_method = OPTIONS) {
-            return 204;
-        }
     }
 
     # Frontend Static Files
@@ -992,12 +989,13 @@ server {
     access_log /var/log/nginx/devops-dashboard-access.log;
     error_log /var/log/nginx/devops-dashboard-error.log;
     
-    location /api {
-        try_files \$uri \$uri/ /backend/public/index.php\$is_args\$args;
+    location ~ ^/api {
         fastcgi_pass devops-php-fpm;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME /var/www/devops-dashboard/backend/public/index.php;
         fastcgi_param REQUEST_URI \$request_uri;
+        fastcgi_param REQUEST_METHOD \$request_method;
+        fastcgi_param QUERY_STRING \$query_string;
         include fastcgi_params;
         add_header Access-Control-Allow-Origin * always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
