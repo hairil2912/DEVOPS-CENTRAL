@@ -469,7 +469,24 @@ if [ -f "$PORT_FILE" ] && [ "$FORCE_NEW_PORT" != "true" ]; then
             echo "  Using existing port"
             echo "  To change port: rm $PORT_FILE && reinstall, or set FORCE_NEW_PORT=true"
         else
-            echo "⚠ Existing port $EXISTING_PORT is in use, generating new port..."
+            echo "⚠ Existing port $EXISTING_PORT is in use"
+            echo "  Checking if it's from old Nginx config..."
+            # Check if old config exists and remove it
+            if grep -q "listen $EXISTING_PORT" /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null; then
+                echo "  Removing old Nginx config to free port..."
+                rm -f /etc/nginx/conf.d/devops-dashboard.conf
+                systemctl reload nginx 2>/dev/null || true
+                sleep 2
+                # Check again
+                if check_port $EXISTING_PORT; then
+                    DASHBOARD_PORT=$EXISTING_PORT
+                    echo "✓ Port $EXISTING_PORT is now available, using it"
+                else
+                    echo "  Port still in use, generating new port..."
+                fi
+            else
+                echo "  Generating new port..."
+            fi
         fi
     else
         echo "⚠ Invalid port in file, generating new port..."
@@ -716,34 +733,52 @@ HTMLDASHBOARD
     echo "✓ Working frontend created"
 fi
 
+# Remove old config if exists (to avoid conflicts)
+if [ -f "/etc/nginx/conf.d/devops-dashboard.conf" ]; then
+    OLD_PORT=$(grep "listen" /etc/nginx/conf.d/devops-dashboard.conf 2>/dev/null | awk '{print $2}' | tr -d ';' | head -n1)
+    if [ -n "$OLD_PORT" ] && [ "$OLD_PORT" != "$DASHBOARD_PORT" ]; then
+        echo "Removing old Nginx config (port $OLD_PORT)..."
+        rm -f /etc/nginx/conf.d/devops-dashboard.conf
+        systemctl reload nginx 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
 # Test and start/reload Nginx (AUTO - ensure it's running)
 if nginx -t 2>/dev/null; then
-    # Start Nginx if not running
-    if ! systemctl is-active --quiet nginx; then
+    # Stop Nginx first if running (to free old port)
+    if systemctl is-active --quiet nginx; then
+        echo "Stopping Nginx to apply new config..."
+        systemctl stop nginx
+        sleep 1
+    fi
+    
+    # Start Nginx
+    systemctl start nginx
+    sleep 2
+    
+    if systemctl is-active --quiet nginx; then
+        echo "✓ Nginx started"
+    else
+        echo "Retrying Nginx start..."
         systemctl start nginx
         sleep 2
-        if systemctl is-active --quiet nginx; then
-            echo "✓ Nginx started"
-        else
-            echo "Retrying Nginx start..."
-            systemctl start nginx
-            sleep 2
+        if ! systemctl is-active --quiet nginx; then
+            echo "Checking Nginx error..."
+            systemctl status nginx --no-pager | head -20
         fi
-    else
-        systemctl reload nginx
-        echo "✓ Nginx reloaded"
     fi
+    
     # Enable Nginx on boot
     systemctl enable nginx 2>/dev/null || true
     
     # Verify Nginx is actually listening
-    sleep 1
+    sleep 2
     if netstat -tuln 2>/dev/null | grep -q ":$DASHBOARD_PORT " || ss -tuln 2>/dev/null | grep -q ":$DASHBOARD_PORT "; then
         echo "✓ Nginx is listening on port $DASHBOARD_PORT"
     else
-        echo "Restarting Nginx to ensure port is listening..."
-        systemctl restart nginx
-        sleep 2
+        echo "Port not listening yet, checking Nginx status..."
+        systemctl status nginx --no-pager | head -10
     fi
 else
     echo -e "${YELLOW}Nginx config test failed. Auto-fixing...${NC}"
