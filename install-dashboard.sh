@@ -53,6 +53,78 @@ NGINX_USER="nginx"
 REPO_URL="https://github.com/hairil2912/DEVOPS-CENTRAL"
 BRANCH="master"
 
+# Check and install PHP, Nginx, MariaDB if not installed
+echo "Checking web stack..."
+
+# Check PHP
+if ! command -v php &> /dev/null; then
+    echo "PHP not found. Installing PHP 7.3..."
+    if command -v dnf &> /dev/null; then
+        dnf install -y https://rpms.remirepo.net/enterprise/remi-release-8.rpm
+        dnf module reset php -y
+        dnf module enable php:remi-7.3 -y
+        dnf install -y php php-fpm php-mysqlnd php-cli php-common php-gd php-mbstring php-opcache php-pdo php-xml php-json php-zip php-curl
+        systemctl enable php-fpm
+        systemctl start php-fpm
+    elif command -v apt-get &> /dev/null; then
+        apt-get update
+        apt-get install -y php7.3 php7.3-fpm php7.3-mysql php7.3-cli php7.3-common php7.3-gd php7.3-mbstring php7.3-xml php7.3-curl php7.3-zip
+        systemctl enable php7.3-fpm
+        systemctl start php7.3-fpm
+    fi
+else
+    echo "PHP already installed: $(php -v | head -n 1)"
+fi
+
+# Check Nginx
+if ! command -v nginx &> /dev/null; then
+    echo "Nginx not found. Installing Nginx..."
+    if command -v dnf &> /dev/null; then
+        cat > /etc/yum.repos.d/nginx.repo <<'EOF'
+[nginx-stable]
+name=nginx stable repo
+baseurl=https://nginx.org/packages/centos/8/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+EOF
+        dnf install -y nginx
+        systemctl enable nginx
+        systemctl start nginx
+    elif command -v apt-get &> /dev/null; then
+        apt-get update
+        apt-get install -y nginx
+        systemctl enable nginx
+        systemctl start nginx
+    fi
+else
+    echo "Nginx already installed: $(nginx -v 2>&1)"
+fi
+
+# Check MariaDB/MySQL
+if ! command -v mysql &> /dev/null && ! command -v mariadb &> /dev/null; then
+    echo "MariaDB/MySQL not found. Installing MariaDB..."
+    if command -v dnf &> /dev/null; then
+        cat > /etc/yum.repos.d/MariaDB.repo <<'EOF'
+[mariadb]
+name = MariaDB
+baseurl = https://archive.mariadb.org/mariadb-10.5.2/yum/centos8-amd64
+gpgkey=https://archive.mariadb.org/PublicKey
+gpgcheck=1
+EOF
+        dnf install -y MariaDB-server MariaDB-client
+        systemctl enable mariadb
+        systemctl start mariadb
+    elif command -v apt-get &> /dev/null; then
+        apt-get update
+        apt-get install -y mariadb-server mariadb-client
+        systemctl enable mariadb
+        systemctl start mariadb
+    fi
+else
+    echo "MariaDB/MySQL already installed"
+fi
+
 # Create directories
 mkdir -p $DASHBOARD_DIR/{backend,frontend,database,nginx,scripts}
 mkdir -p $DASHBOARD_DIR/backend/storage/{logs,cache,backups}
